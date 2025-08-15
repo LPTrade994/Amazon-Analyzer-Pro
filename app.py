@@ -721,7 +721,11 @@ main_cols = [c for c in dfp.columns if c.endswith(suffix_main)]
 dfp = dfp.rename(columns={c: c[: -len(suffix_main)] for c in main_cols})
 
 # Colonna modificabile manualmente con fallback al Buy Box corrente
-dfp["Prezzo Sito"] = dfp["SitePriceGross"].fillna(dfp.get("Buy Box 🚚: Current"))
+fallback = dfp.get(
+    "Buy Box 🚚: Current",
+    pd.Series(index=dfp.index, dtype=dfp["SitePriceGross"].dtype),
+)
+dfp["Prezzo Sito"] = dfp["SitePriceGross"].fillna(fallback)
 
 dfp["WindowSignal"] = compute_window_signal(dfp)
 
