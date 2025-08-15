@@ -330,6 +330,7 @@ def compute_profits(
     locale_origin_col: str = "Locale",
     use_fba: bool = False,
     site_price: float | None = None,
+    site_price_col: str | None = None,
     payment_fee_site: float = 0.05,
     default_discount_all: float = 0.21,
 ) -> pd.DataFrame:
@@ -375,8 +376,19 @@ def compute_profits(
     profit_amz_eur = proceeds_exvat_amz - purchase_net
     profit_amz_pct = profit_amz_eur / purchase_net.replace(0, np.nan)
 
-    default_site_price = _col(df, "Buy Box 🚚: Current", np.nan).map(lambda x: parse_float(x, default=np.nan))
-    site_price_series = pd.Series([site_price]*len(df), index=df.index) if site_price is not None else default_site_price
+    if site_price_col is not None:
+        site_price_series = _col(df, site_price_col, np.nan).map(
+            lambda x: parse_float(x, default=np.nan)
+        )
+    else:
+        default_site_price = _col(
+            df, "Buy Box 🚚: Current", np.nan
+        ).map(lambda x: parse_float(x, default=np.nan))
+        site_price_series = (
+            pd.Series([site_price] * len(df), index=df.index)
+            if site_price is not None
+            else default_site_price
+        )
 
     pay_fee = site_price_series * float(payment_fee_site)
     proceeds_gross_site = site_price_series - pay_fee - ship_fbm
@@ -399,6 +411,7 @@ def compute_profits(
 def recompute_row_profit(
     row: pd.Series,
     use_fba: bool,
+    site_price_col: str = "SitePriceGross",
     payment_fee_site: float = 0.05,
 ) -> pd.Series:
     """Recalculate profit fields and opportunity score for a single row.
@@ -408,7 +421,7 @@ def recompute_row_profit(
     reused without duplicating logic.
 
     It expects standardised purchase/sale columns named ``Price_Base`` and
-    ``BuyBoxPrice``.  The site price should be provided in ``SitePriceGross``.
+    ``BuyBoxPrice``.  The site price is taken from ``site_price_col``.
     Any profit or score columns returned by the helpers are merged back into
     the resulting ``Series``.
     """
@@ -419,7 +432,7 @@ def recompute_row_profit(
         price_col_origin="Price_Base",
         price_col_target_bb="BuyBoxPrice",
         use_fba=use_fba,
-        site_price=row.get("SitePriceGross"),
+        site_price_col=site_price_col,
         payment_fee_site=payment_fee_site,
     )
     df_single["OpportunityScore"] = compute_opportunity_score(df_single, {}, {})

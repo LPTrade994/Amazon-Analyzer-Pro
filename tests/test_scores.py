@@ -29,6 +29,24 @@ def test_compute_profits_and_opportunity_score_smoke():
     assert len(scores) == 10
 
 
+def test_compute_profits_site_price_column():
+    df = pd.DataFrame(
+        {
+            "Price_Base": [10.0],
+            "BuyBoxPrice": [15.0],
+            "Locale": ["IT"],
+            "CustomSitePrice": [20.0],
+        }
+    )
+    result = compute_profits(
+        df,
+        "Price_Base",
+        "BuyBoxPrice",
+        site_price_col="CustomSitePrice",
+    )
+    assert result["SitePriceGross"].iloc[0] == 20.0
+
+
 def test_aggregate_opportunities():
     df = pd.DataFrame(
         {

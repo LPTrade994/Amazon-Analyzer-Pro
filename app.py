@@ -869,7 +869,12 @@ with st.expander("Dettagli avanzati / diagnostica"):
                 target_price_col: "BuyBoxPrice"
             })
             row["SitePriceGross"] = new_price
-            updated = recompute_row_profit(row, use_fba=use_fba, payment_fee_site=0.05)
+            updated = recompute_row_profit(
+                row,
+                use_fba=use_fba,
+                site_price_col="SitePriceGross",
+                payment_fee_site=0.05,
+            )
             for col in [
                 "ProfitAmazonEUR",
                 "ProfitAmazonPct",
