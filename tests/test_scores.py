@@ -10,6 +10,7 @@ from score import (
     compute_opportunity_score,
     aggregate_opportunities,
     compute_price_regime,
+    compute_quality_metrics,
 )
 
 
@@ -55,3 +56,18 @@ def test_compute_price_regime_basic():
     current = df["bb"].iloc[-1]
     z = (current - reg["BB_MA_365"]) / exp_std
     assert reg["BB_ZSCORE"] == pytest.approx(z)
+
+
+def test_compute_quality_metrics():
+    df = pd.DataFrame(
+        {
+            "Return Rate": ["5%"],
+            "Reviews: Rating": [4.2],
+            "Reviews: Rating Count": [120],
+            "Reviews: Rating Count - 90 days avg.": [100],
+        }
+    )
+    qm = compute_quality_metrics(df)
+    assert qm["Return Rate"] == 5.0
+    assert qm["Reviews: Rating"] == 4.2
+    assert qm["ReviewsMomentum"] == 20

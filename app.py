@@ -19,7 +19,7 @@ from score import (
     SHIPPING_COSTS, VAT_RATES, normalize_locale,
     calculate_shipping_cost, calc_final_purchase_price,
     compute_profits, compute_opportunity_score, compute_price_regime,
-    compute_amazon_risk, parse_float, parse_int
+    compute_amazon_risk, compute_quality_metrics, parse_float, parse_int
 )
 
 # -----------------------
@@ -45,26 +45,43 @@ def _safe(x):
     except Exception:
         return "—"
 
-def _badge(value, suffix="€"):
-    """Badge XL colorato per profitti."""
+def _badge(value, suffix="€", cls_prefix="badge-profit", display_value=None):
+    """Badge XL colorato con colori customizzabili.
+
+    Parameters
+    ----------
+    value : float | int
+        Valore usato per determinare il colore (positivo=verde, negativo=rosso).
+    suffix : str, default "€"
+        Suffisso mostrato accanto al valore.
+    cls_prefix : str, default "badge-profit"
+        Prefisso delle classi CSS da utilizzare ("-pos", "-neg", "-neu").
+    display_value : float | int | None
+        Valore da visualizzare; se ``None`` viene usato ``value``.
+    """
+
+    if display_value is None:
+        display_value = value
+
     if value is None or (isinstance(value, float) and np.isnan(value)):
-        cls = "badge-profit-neu"; txt = "—"
+        cls = f"{cls_prefix}-neu"; txt = "—"
     else:
         try:
             v = float(value)
+            disp_val = float(display_value) if display_value is not None else v
             if suffix == "%":
-                disp = f"{round(v, 1)}{suffix}"
+                disp = f"{round(disp_val, 1)}{suffix}"
             else:
-                disp = f"{round(v, 2)}{suffix}"
+                disp = f"{round(disp_val, 2)}{suffix}"
             if v > 0.01:
-                cls = "badge-profit-pos"
+                cls = f"{cls_prefix}-pos"
             elif v < -0.01:
-                cls = "badge-profit-neg"
+                cls = f"{cls_prefix}-neg"
             else:
-                cls = "badge-profit-neu"
+                cls = f"{cls_prefix}-neu"
             txt = disp
         except Exception:
-            cls = "badge-profit-neu"; txt = "—"
+            cls = f"{cls_prefix}-neu"; txt = "—"
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
 def _z_badge(z):
@@ -167,6 +184,9 @@ div[data-baseweb="select"] * { background: var(--card) !important; color: var(--
 .badge-profit-pos { background: rgba(0,196,106,.12); color: var(--good); }
 .badge-profit-neg { background: rgba(229,9,20,.12); color: var(--bad); }
 .badge-profit-neu { background: rgba(255,255,255,.1); color: var(--text); }
+.badge-quality-pos { background: rgba(0,196,106,.12); color: var(--good); }
+.badge-quality-neg { background: rgba(229,9,20,.12); color: var(--bad); }
+.badge-quality-neu { background: rgba(255,255,255,.1); color: var(--text); }
 .badge-flag-pos { background: rgba(0,196,106,.12); color: var(--good); }
 .badge-flag-neg { background: rgba(229,9,20,.12); color: var(--bad); }
 .badge-flag-neu { background: rgba(255,255,255,.1); color: var(--text); }
@@ -408,6 +428,7 @@ asin_sel = st.selectbox("Dettaglio ASIN", options=df_ess["ASIN"].unique())
 df_sel = dfp[dfp["ASIN"] == asin_sel]
 reg = compute_price_regime(df_sel, target_price_col)
 risk = compute_amazon_risk(df_sel)
+quality = compute_quality_metrics(df_sel)
 with st.expander("Price Regime"):
     st.write("Media 30g:", _safe(reg.get("BB_MA_30")))
     st.write("Media 90g:", _safe(reg.get("BB_MA_90")))
@@ -460,6 +481,34 @@ with st.expander("Amazon Risk & Events"):
     st.markdown(
         "Lightning Deals: Is Lowest: "
         + _flag_badge(risk.get("LD_IS_LOWEST"), txt_ok="No", txt_bad="Yes"),
+        unsafe_allow_html=True,
+    )
+
+with st.expander("Quality & Returns"):
+    ret = quality.get("Return Rate")
+    st.markdown(
+        "Return Rate: "
+        + _badge(-ret, "%", cls_prefix="badge-quality", display_value=ret),
+        unsafe_allow_html=True,
+    )
+    rating = quality.get("Reviews: Rating")
+    st.markdown(
+        "Reviews Rating: "
+        + _badge(
+            rating - 4.0,
+            "★",
+            cls_prefix="badge-quality",
+            display_value=rating,
+        ),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "Review Momentum: "
+        + _badge(
+            quality.get("ReviewsMomentum"),
+            "",
+            cls_prefix="badge-quality",
+        ),
         unsafe_allow_html=True,
     )
 
