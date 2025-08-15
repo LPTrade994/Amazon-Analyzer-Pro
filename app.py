@@ -721,10 +721,10 @@ main_cols = [c for c in dfp.columns if c.endswith(suffix_main)]
 dfp = dfp.rename(columns={c: c[: -len(suffix_main)] for c in main_cols})
 
 # Colonna modificabile manualmente con fallback al Buy Box corrente
-fallback = dfp.get(
-    "Buy Box 🚚: Current",
-    pd.Series(index=dfp.index, dtype=dfp["SitePriceGross"].dtype),
-)
+# Use a float fallback to avoid passing pd.NA to fillna when SitePriceGross
+# has a nullable integer dtype (Int64). pd.NA cannot be used directly with
+# Series.fillna, so default to a Series of ``np.nan`` values instead.
+fallback = dfp.get("Buy Box 🚚: Current", pd.Series(np.nan, index=dfp.index))
 dfp["Prezzo Sito"] = dfp["SitePriceGross"].fillna(fallback)
 
 dfp["WindowSignal"] = compute_window_signal(dfp)
