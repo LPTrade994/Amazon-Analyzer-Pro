@@ -24,6 +24,7 @@ from score import (
     calculate_shipping_cost,
     calc_final_purchase_price,
     compute_profits,
+    compute_profits_multi,
     compute_opportunity_score,
     compute_price_regime,
     recompute_row_profit,
@@ -686,31 +687,39 @@ if not (2 <= len(selected_markets) <= 4):
 st.session_state["locale_targets"] = selected_markets
 locale_target = selected_markets[0]
 
-# Calcola profitti (logica IVA/sconto invariata; default sconto = sidebar)
-dfp = compute_profits(
-    df,
-    price_col_origin=origin_price_col,
-    price_col_target_bb=target_price_col,
-    locale_target=locale_target,
-    locale_origin_col="Locale",
-    use_fba=use_fba,
-    site_price=site_price_override_val,
-    payment_fee_site=0.05,
-    default_discount_all=disc_default,
-)
+# Calcola profitti per tutti i mercati selezionati
+df["Price_Base"] = df[origin_price_col]
+targets = {}
+for loc in selected_markets:
+    col_name = f"{target_price_col}_{loc}"
+    if col_name not in df.columns and target_price_col in df.columns:
+        df[col_name] = df[target_price_col]
+    targets[loc] = col_name
+
+dfp = compute_profits_multi(df, targets)
+
+# Ricalcola Opportunity Score per ogni mercato
+for loc in selected_markets:
+    suffix = f"_{loc}"
+    temp_cols = {c[: -len(suffix)]: dfp[c] for c in dfp.columns if c.endswith(suffix)}
+    temp = dfp.assign(**temp_cols)
+    dfp[f"OpportunityScore{suffix}"] = compute_opportunity_score(
+        temp,
+        weights_pillars,
+        weights_core,
+        penalty_map=penalty_map,
+        penalty_threshold=penalty_threshold,
+        penalty_suggested=penalty_suggested,
+    )
+
+# Rinomina le colonne del mercato principale per compatibilità con la logica esistente
+suffix_main = f"_{locale_target}"
+main_cols = [c for c in dfp.columns if c.endswith(suffix_main)]
+dfp = dfp.rename(columns={c: c[: -len(suffix_main)] for c in main_cols})
 
 # Colonna modificabile manualmente con fallback al Buy Box corrente
 dfp["Prezzo Sito"] = dfp["SitePriceGross"].fillna(dfp.get("Buy Box 🚚: Current"))
 
-# Opportunity Score
-dfp["OpportunityScore"] = compute_opportunity_score(
-    dfp,
-    weights_pillars,
-    weights_core,
-    penalty_map=penalty_map,
-    penalty_threshold=penalty_threshold,
-    penalty_suggested=penalty_suggested,
-)
 dfp["WindowSignal"] = compute_window_signal(dfp)
 
 # Apply manual site price edits from previous interactions
@@ -745,6 +754,28 @@ if "dfp_editor" in st.session_state:
             ]:
                 dfp.at[idx, col] = updated[col]
             dfp.at[idx, "Prezzo Sito"] = updated["SitePriceGross"]
+
+
+# Tabs per mercato con metriche chiave
+tabs = st.tabs(selected_markets)
+
+
+def _colname(base: str, loc: str) -> str:
+    return base if loc == locale_target else f"{base}_{loc}"
+
+
+for loc, tab in zip(selected_markets, tabs):
+    with tab:
+        col_map = {
+            _colname(target_price_col, loc): "Buy Box",
+            _colname("Referral Fee based on current Buy Box price", loc): "Referral Fee",
+            _colname("ProfitAmazonEUR", loc): "Profit Amazon €",
+            _colname("ProfitSiteEUR", loc): "Profit Sito €",
+            _colname("OpportunityScore", loc): "Mini-Score",
+        }
+        cols_avail = [c for c in col_map if c in dfp.columns]
+        tab_df = dfp[cols_avail].rename(columns=col_map)
+        st.dataframe(tab_df)
 
 
 # Filtri rapidi
