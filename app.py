@@ -14,11 +14,12 @@ st.set_page_config(
 
 import pandas as pd
 import numpy as np
-from loaders import load_data, parse_float, parse_int, parse_weight, default_discount_map
+from loaders import load_data, default_discount_map
 from score import (
     SHIPPING_COSTS, VAT_RATES, normalize_locale,
     calculate_shipping_cost, calc_final_purchase_price,
-    compute_profits, compute_opportunity_score, compute_price_regime
+    compute_profits, compute_opportunity_score, compute_price_regime,
+    parse_float, parse_int
 )
 
 # -----------------------
@@ -83,6 +84,21 @@ def _z_badge(z):
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
 
+def _flag_badge(val, txt_ok="No MAP", txt_bad="MAP"):
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        cls = "badge-flag-neu"; txt = "N/A"
+    else:
+        try:
+            flag = bool(val)
+        except Exception:
+            flag = False
+        if flag:
+            cls = "badge-flag-neg"; txt = txt_bad
+        else:
+            cls = "badge-flag-pos"; txt = txt_ok
+    return f'<span class="badge badge-xl {cls}">{txt}</span>'
+
+
 def _missing_columns(df: pd.DataFrame, required: list[str]) -> list[str]:
     """Return a list of required columns that are absent from *df*."""
     return [c for c in required if c not in df.columns]
@@ -136,6 +152,9 @@ div[data-baseweb="select"] * { background: var(--card) !important; color: var(--
 .badge-profit-pos { background: rgba(0,196,106,.12); color: var(--good); }
 .badge-profit-neg { background: rgba(229,9,20,.12); color: var(--bad); }
 .badge-profit-neu { background: rgba(255,255,255,.1); color: var(--text); }
+.badge-flag-pos { background: rgba(0,196,106,.12); color: var(--good); }
+.badge-flag-neg { background: rgba(229,9,20,.12); color: var(--bad); }
+.badge-flag-neu { background: rgba(255,255,255,.1); color: var(--text); }
 .badge-xl { font-size: 0.95rem; }
 .card { background: var(--card); padding: 14px 16px; border-radius: 16px; border:1px solid #1f1f22; }
 h1,h2,h3,h4 { color: var(--text); }
@@ -382,6 +401,19 @@ with st.expander("Price Regime"):
     st.write("Banda -1σ:", _safe(reg.get("BB_LOWER_1SD")))
     st.write("Banda +1σ:", _safe(reg.get("BB_UPPER_1SD")))
     st.markdown("Z-score attuale: " + _z_badge(reg.get("BB_ZSCORE")), unsafe_allow_html=True)
+
+with st.expander("Competition Map"):
+    row = df_sel.iloc[0] if not df_sel.empty else {}
+    st.write("Total Offer Count:", _safe(row.get("Total Offer Count")))
+    st.write(
+        "Buy Box: Winner Count 90 days:",
+        _safe(row.get("Buy Box: Winner Count 90 days")),
+    )
+    st.write("Buy Box: Unqualified:", _safe(row.get("Buy Box: Unqualified")))
+    st.markdown(
+        "MAP restriction: " + _flag_badge(row.get("MAP restriction")),
+        unsafe_allow_html=True,
+    )
 
 # Pannello avanzato opzionale
 with st.expander("Dettagli avanzati / diagnostica"):
