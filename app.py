@@ -20,6 +20,7 @@ from score import (
     SHIPPING_COSTS, VAT_RATES, normalize_locale,
     calculate_shipping_cost, calc_final_purchase_price,
     compute_profits, compute_opportunity_score, compute_price_regime,
+    recompute_row_profit,
     compute_amazon_risk, compute_quality_metrics, parse_float, parse_int,
     DEFAULT_PENALTY_MAP, DEFAULT_PENALTY_THRESHOLD, DEFAULT_PENALTY_SUGGESTED,
 )
@@ -851,13 +852,36 @@ with st.expander("Quality & Returns"):
 with st.expander("Dettagli avanzati / diagnostica"):
     st.write("Prime righe dataset unito (post-calcoli):")
     cols_disable = [c for c in dfp.columns if c != "Prezzo Sito"]
+    df_edit = dfp.head(50).copy()
     edited_df = st.data_editor(
-        dfp.head(50),
+        df_edit,
         disabled=cols_disable,
         key="dfp_editor"
     )
-    dfp.loc[edited_df.index, "Prezzo Sito"] = edited_df["Prezzo Sito"]
-    dfp.loc[edited_df.index, "SitePriceGross"] = edited_df["Prezzo Sito"]
+    changed = edited_df["Prezzo Sito"] != df_edit["Prezzo Sito"]
+    if changed.any():
+        for idx in edited_df.index[changed]:
+            new_price = edited_df.at[idx, "Prezzo Sito"]
+            dfp.at[idx, "Prezzo Sito"] = new_price
+            dfp.at[idx, "SitePriceGross"] = new_price
+            row = dfp.loc[idx].rename({
+                origin_price_col: "Price_Base",
+                target_price_col: "BuyBoxPrice"
+            })
+            row["SitePriceGross"] = new_price
+            updated = recompute_row_profit(row, use_fba=use_fba, payment_fee_site=0.05)
+            for col in [
+                "ProfitAmazonEUR",
+                "ProfitAmazonPct",
+                "ProfitSiteEUR",
+                "ProfitSitePct",
+                "OpportunityScore",
+                "SitePriceGross",
+            ]:
+                dfp.at[idx, col] = updated[col]
+            dfp.at[idx, "Prezzo Sito"] = updated["SitePriceGross"]
+        df_edit = dfp.head(50)
+    st.dataframe(df_edit)
     st.caption("Suggerimento: usa i preset in sidebar per Flip / Margine / Volume.")
 
 st.success("Opportunity Score 2.0, profitti Amazon/HDG, sconto default 21% e Vista Essenziale attivi.")
