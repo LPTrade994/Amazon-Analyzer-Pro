@@ -271,6 +271,21 @@ def _risk_badge(value, threshold, suffix="%"):
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
 
+def _window_badge(signal: str | None) -> str:
+    """Badge per il segnale di finestra favorevole."""
+
+    mapping = {
+        "LIGHTNING": ("⚡", "badge-green"),
+        "DELAY": ("⏳", "badge-red"),
+        "SELL": ("OOS", "badge-green"),
+    }
+    if signal is None:
+        txt, cls = "—", "badge-gray"
+    else:
+        txt, cls = mapping.get(str(signal).upper(), ("—", "badge-gray"))
+    return f'<span class="badge badge-xl {cls}">{txt}</span>'
+
+
 def _missing_columns(df: pd.DataFrame, required: list[str]) -> list[str]:
     """Return a list of required columns that are absent from *df*."""
     return [c for c in required if c not in df.columns]
@@ -782,6 +797,9 @@ st.markdown(badges_html, unsafe_allow_html=True)
 
 df_view = df_view[mask]
 
+if st.toggle("Solo con finestra favorevole"):
+    df_view = df_view[df_view["WindowSignal"].notna() & (df_view["WindowSignal"] != "")]
+
 csv_view = df_view.to_csv(decimal=",", sep=";", index=False).encode("utf-8")
 st.download_button(
     "📥 Scarica CSV filtrato",
@@ -812,6 +830,7 @@ for c in [
     "Buy Box: % Amazon 90 days",
     "Return Rate",
     "OpportunityScore",
+    "WindowSignal",
 ]:
     if c in df_view.columns:
         cols_ess.append(c)
@@ -855,6 +874,7 @@ header = [
     "%Amazon 90d",
     "Return",
     "Score",
+    "Window",
 ]
 
 rows_html = []
@@ -889,6 +909,7 @@ for _, r in df_ess.iterrows():
         f"{_safe(r.get('Buy Box: % Amazon 90 days'))}",
         f"{_safe(r.get('Return Rate'))}",
         f"{_safe(r.get('OpportunityScore'))}",
+        _window_badge(r.get("WindowSignal")),
     ]
     rows_html.append(
         "<tr>"

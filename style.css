@@ -106,6 +106,29 @@
     display: inline-block;
 }
 
+/* Badge styles */
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 10px;
+    font-weight: 600;
+}
+.badge-xl {
+    font-size: 0.95rem;
+}
+.badge-green {
+    background: rgba(0, 196, 106, 0.12);
+    color: #00c46a;
+}
+.badge-red {
+    background: rgba(229, 9, 20, 0.12);
+    color: #ff4d4d;
+}
+.badge-gray {
+    background: rgba(255, 255, 255, 0.1);
+    color: #a0a0a0;
+}
+
 /* Input e form controls */
 .stTextInput>div>div>input, 
 .stSelectbox>div>div>div, /* Attenzione: questo potrebbe essere troppo generico */
