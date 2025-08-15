@@ -190,7 +190,11 @@ div[data-baseweb="select"] * { background: var(--card) !important; color: var(--
 .badge-flag-pos { background: rgba(0,196,106,.12); color: var(--good); }
 .badge-flag-neg { background: rgba(229,9,20,.12); color: var(--bad); }
 .badge-flag-neu { background: rgba(255,255,255,.1); color: var(--text); }
+.badge-green { background: rgba(0,196,106,.12); color: var(--good); }
+.badge-gray { background: rgba(255,255,255,.1); color: var(--muted); }
+.badge-red { background: rgba(229,9,20,.12); color: var(--bad); }
 .badge-xl { font-size: 0.95rem; }
+.streamlit-expanderHeader, .streamlit-expanderContent { background: var(--card); color: var(--text); }
 .card { background: var(--card); padding: 14px 16px; border-radius: 16px; border:1px solid #1f1f22; }
 h1,h2,h3,h4 { color: var(--text); }
 hr { border-color:#222227; }
