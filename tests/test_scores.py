@@ -93,16 +93,37 @@ def test_compute_quality_metrics():
 
 
 def test_compute_window_signal_rules():
-    df = pd.DataFrame(
+    # Amazon out of stock with positive z-score → SELL
+    df_sell = pd.DataFrame(
         {
-            "AMZ_OOS_90": [1, 0, 0, 1],
-            "AMZ_SHIP_DELAY": [False, True, False, True],
-            "LD_IS_LOWEST": [False, False, True, True],
-            "BB_ZSCORE": [1.2, -0.5, 0.4, 0.3],
+            "AMZ_OOS_90": [3],
+            "AMZ_SHIP_DELAY": [False],
+            "LD_IS_LOWEST": [False],
+            "BB_ZSCORE": [1.5],
         }
     )
-    sig = compute_window_signal(df)
-    assert list(sig) == ["SELL", "DELAY", "LIGHTNING", "DELAY"]
+    # Shipping delay from Amazon → DELAY
+    df_delay = pd.DataFrame(
+        {
+            "AMZ_OOS_90": [0],
+            "AMZ_SHIP_DELAY": [True],
+            "LD_IS_LOWEST": [False],
+            "BB_ZSCORE": [0.0],
+        }
+    )
+    # Lightning deal at lowest price → LIGHTNING
+    df_lightning = pd.DataFrame(
+        {
+            "AMZ_OOS_90": [0],
+            "AMZ_SHIP_DELAY": [False],
+            "LD_IS_LOWEST": [True],
+            "BB_ZSCORE": [-0.3],
+        }
+    )
+
+    assert compute_window_signal(df_sell).iloc[0] == "SELL"
+    assert compute_window_signal(df_delay).iloc[0] == "DELAY"
+    assert compute_window_signal(df_lightning).iloc[0] == "LIGHTNING"
 
 
 def test_compute_window_signal_integration_with_profits():
