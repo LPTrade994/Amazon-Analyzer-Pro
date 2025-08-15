@@ -8,7 +8,39 @@ from __future__ import annotations
 import math
 import pandas as pd
 import numpy as np
-from loaders import parse_float, parse_int, parse_weight
+
+
+def parse_float(x, default=None):
+    try:
+        if pd.isna(x):
+            return default
+        s = str(x).strip().replace("%", "").replace(",", ".")
+        return float(s)
+    except Exception:
+        return default
+
+
+def parse_int(x, default=None):
+    try:
+        if pd.isna(x):
+            return default
+        return int(float(str(x).strip()))
+    except Exception:
+        return default
+
+
+def parse_weight(x):
+    try:
+        if pd.isna(x):
+            return 0
+        s = str(x).lower().strip().replace(",", ".")
+        if s.endswith("kg"):
+            return float(s.replace("kg", "")) * 1000
+        if s.endswith("g"):
+            return float(s.replace("g", ""))
+        return float(s)
+    except Exception:
+        return 0
 
 # ---------------------------
 # Config base & costanti
