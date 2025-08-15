@@ -179,13 +179,20 @@ if not (orig_file and tgt_file):
     st.info("⬆️ Carica **Lista di Origine** e **Lista di Confronto** per iniziare.")
     st.stop()
 
-# Carica
-df_orig = load_data(orig_file)
-df_tgt  = load_data(tgt_file)
+# Colonne richieste
+required_columns = ["ASIN", "Locale", origin_price_col, target_price_col]
 
-# Merge by ASIN (safe)
-if "ASIN" not in df_orig.columns or "ASIN" not in df_tgt.columns:
-    st.error("Assicurati che entrambi i file contengano la colonna **ASIN**.")
+# Carica e verifica colonne
+df_orig = load_data(orig_file)
+missing = [c for c in required_columns if c not in df_orig.columns]
+if missing:
+    st.error(f"Lista di Origine: mancano le colonne {', '.join(missing)}")
+    st.stop()
+
+df_tgt = load_data(tgt_file)
+missing = [c for c in required_columns if c not in df_tgt.columns]
+if missing:
+    st.error(f"Lista di Confronto: mancano le colonne {', '.join(missing)}")
     st.stop()
 
 # Left join: partiamo dall'origine (identità/Locale/peso), poi aggiungiamo target
