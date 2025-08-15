@@ -109,6 +109,66 @@ def _to_bool_series(s: pd.Series) -> pd.Series:
     return out
 
 # ---------------------------
+# Price regime helpers
+# ---------------------------
+
+def compute_price_regime(df: pd.DataFrame, price_col: str) -> pd.Series:
+    """Calcola medie mobili e regime di prezzo per una serie Buy Box.
+
+    Restituisce una ``Series`` con:
+      - medie 30/90/180/365 giorni
+      - deviazione standard (ultimi 365 giorni)
+      - bande ``±1σ`` attorno alla media 365
+      - z-score dell'ultimo prezzo rispetto alla media 365
+    """
+
+    prices = _col(df, price_col).map(lambda x: parse_float(x, default=np.nan))
+    prices = prices.dropna()
+    if prices.empty:
+        return pd.Series(
+            {
+                "BB_MA_30": np.nan,
+                "BB_MA_90": np.nan,
+                "BB_MA_180": np.nan,
+                "BB_MA_365": np.nan,
+                "BB_STD": np.nan,
+                "BB_LOWER_1SD": np.nan,
+                "BB_UPPER_1SD": np.nan,
+                "BB_ZSCORE": np.nan,
+            }
+        )
+
+    def _mean(window: int) -> float:
+        if len(prices) < window:
+            return prices.mean()
+        return prices.tail(window).mean()
+
+    ma30 = _mean(30)
+    ma90 = _mean(90)
+    ma180 = _mean(180)
+    ma365 = _mean(365)
+
+    segment = prices.tail(min(365, len(prices)))
+    std = segment.std()
+    lower = ma365 - std if pd.notna(std) else np.nan
+    upper = ma365 + std if pd.notna(std) else np.nan
+    current = prices.iloc[-1]
+    z = (current - ma365) / std if pd.notna(std) and std > 1e-12 else 0.0
+
+    return pd.Series(
+        {
+            "BB_MA_30": ma30,
+            "BB_MA_90": ma90,
+            "BB_MA_180": ma180,
+            "BB_MA_365": ma365,
+            "BB_STD": std,
+            "BB_LOWER_1SD": lower,
+            "BB_UPPER_1SD": upper,
+            "BB_ZSCORE": z,
+        }
+    )
+
+# ---------------------------
 # Logica costo d’acquisto (invariata, default sconto 21%)
 # ---------------------------
 
