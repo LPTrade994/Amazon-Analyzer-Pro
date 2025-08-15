@@ -226,6 +226,39 @@ def compute_amazon_risk(df: pd.DataFrame) -> pd.Series:
         }
     )
 
+
+def compute_quality_metrics(df: pd.DataFrame) -> pd.Series:
+    """Estrae metriche di qualità e ritorni da un singolo ASIN.
+
+    Parametri
+    ---------
+    df : pd.DataFrame
+        DataFrame filtrato su un singolo ASIN (una o più righe temporali).
+
+    Restituisce
+    ------------
+    pd.Series con:
+        - ``Return Rate`` (float)
+        - ``Reviews: Rating`` (float)
+        - ``ReviewsMomentum`` differenza tra rating count corrente e media 90g
+    """
+
+    row = df.iloc[0] if not df.empty else {}
+
+    ret_rate = parse_float(row.get("Return Rate"), default=np.nan)
+    rating = parse_float(row.get("Reviews: Rating"), default=np.nan)
+    rc = parse_int(row.get("Reviews: Rating Count"), default=np.nan)
+    rc90 = parse_int(row.get("Reviews: Rating Count - 90 days avg."), default=np.nan)
+    momentum = rc - rc90 if pd.notna(rc) and pd.notna(rc90) else np.nan
+
+    return pd.Series(
+        {
+            "Return Rate": ret_rate,
+            "Reviews: Rating": rating,
+            "ReviewsMomentum": momentum,
+        }
+    )
+
 # ---------------------------
 # Logica costo d’acquisto (invariata, default sconto 21%)
 # ---------------------------
