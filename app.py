@@ -37,7 +37,7 @@ def _safe(x):
                 return "—"
             return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         # tenta conversione numerica soft
-        xv = pd.to_numeric(pd.Series([x]), errors="coerce").iloc[0]
+        xv = parse_float(x, default=np.nan)
         if pd.notna(xv):
             return _safe(float(xv))
         return str(x)
@@ -122,13 +122,10 @@ target_price_col = st.sidebar.selectbox("Prezzo Target (Amazon)", options=price_
 
 st.sidebar.subheader("Parametri vendita")
 use_fba = st.sidebar.toggle("Usa FBA (considera Pick&Pack)", value=False)
-site_price_override = st.sidebar.text_input("Prezzo HDGaming (vuoto = usa BB IT Current)", value="")
-site_price_override_val = None
-if site_price_override.strip() != "":
-    try:
-        site_price_override_val = float(str(site_price_override).replace(",", "."))
-    except Exception:
-        site_price_override_val = None  # fallback: usa default
+site_price_override = st.sidebar.text_input(
+    "Prezzo HDGaming (vuoto = usa BB IT Current)", value=""
+)
+site_price_override_val = parse_float(site_price_override, default=None)
 
 st.sidebar.subheader("Sconto acquisto (default 21%)")
 disc_default = st.sidebar.slider("Sconto default per tutti i paesi", min_value=0, max_value=60, value=21, step=1) / 100.0
@@ -227,14 +224,34 @@ def _to_pct(x):
 df_view = dfp.copy()
 df_view["ProfitAmazonPctView"] = df_view["ProfitAmazonPct"].map(_to_pct)
 df_view["ProfitSitePctView"] = df_view["ProfitSitePct"].map(_to_pct)
-df_view["BB_AmzShare90d"] = pd.to_numeric(dfp.get("Buy Box: % Amazon 90 days", pd.Series([np.nan]*len(dfp))), errors="coerce")
+df_view["BB_AmzShare90d"] = (
+    dfp.get("Buy Box: % Amazon 90 days", pd.Series([np.nan] * len(dfp)))
+    .map(lambda x: parse_float(x, default=np.nan))
+    .astype(float)
+)
 
 mask = (
-    (pd.to_numeric(df_view["ProfitAmazonEUR"], errors="coerce").fillna(-9e9) >= float(min_profit_eur)) &
-    (pd.to_numeric(df_view["ProfitAmazonPctView"], errors="coerce").fillna(-9e9) >= float(min_profit_pct)) &
-    (df_view["BB_AmzShare90d"].fillna(0.0) <= float(max_amz_share)) &
-    (pd.to_numeric(df_view.get("Total Offer Count", pd.Series([0]*len(df_view))), errors="coerce").fillna(0) <= int(max_offer_cnt)) &
-    (pd.to_numeric(df_view.get("Sales Rank: Current", pd.Series([0]*len(df_view))), errors="coerce").fillna(0) <= int(max_rank))
+    (
+        df_view["ProfitAmazonEUR"].map(lambda x: parse_float(x, default=np.nan)).fillna(-9e9)
+        >= float(min_profit_eur)
+    )
+    & (
+        df_view["ProfitAmazonPctView"].map(lambda x: parse_float(x, default=np.nan)).fillna(-9e9)
+        >= float(min_profit_pct)
+    )
+    & (df_view["BB_AmzShare90d"].fillna(0.0) <= float(max_amz_share))
+    & (
+        df_view.get("Total Offer Count", pd.Series([0] * len(df_view)))
+        .map(lambda x: parse_int(x, default=np.nan))
+        .fillna(0)
+        <= int(max_offer_cnt)
+    )
+    & (
+        df_view.get("Sales Rank: Current", pd.Series([0] * len(df_view)))
+        .map(lambda x: parse_int(x, default=np.nan))
+        .fillna(0)
+        <= int(max_rank)
+    )
 )
 df_view = df_view[mask]
 
