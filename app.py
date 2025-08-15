@@ -673,8 +673,18 @@ _validate_required_columns(df_orig, df_tgt, required_columns)
 # Left join: partiamo dall'origine (identità/Locale/peso), poi aggiungiamo target
 df = pd.merge(df_orig, df_tgt, on="ASIN", how="left", suffixes=("", " (tgt)"))
 
-# Imposta locale target (default IT)
-locale_target = "IT"
+# Selezione mercati target
+available_markets = ["IT", "DE", "FR", "ES"]
+selected_markets = st.multiselect(
+    "Mercati target",
+    available_markets,
+    default=st.session_state.get("locale_targets", ["IT", "DE"]),
+)
+if not (2 <= len(selected_markets) <= 4):
+    st.error("Selezionare da 2 a 4 mercati.")
+    st.stop()
+st.session_state["locale_targets"] = selected_markets
+locale_target = selected_markets[0]
 
 # Calcola profitti (logica IVA/sconto invariata; default sconto = sidebar)
 dfp = compute_profits(
