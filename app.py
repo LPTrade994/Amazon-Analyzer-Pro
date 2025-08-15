@@ -584,29 +584,51 @@ df_view["BB_AmzShare90d"] = (
     .astype(float)
 )
 
-mask = (
-    (
-        df_view["ProfitAmazonEUR"].map(lambda x: parse_float(x, default=np.nan)).fillna(-9e9)
-        >= float(min_profit_eur)
-    )
-    & (
-        df_view["ProfitAmazonPctView"].map(lambda x: parse_float(x, default=np.nan)).fillna(-9e9)
-        >= float(min_profit_pct)
-    )
-    & (df_view["BB_AmzShare90d"].fillna(0.0) <= float(max_amz_share))
-    & (
-        df_view.get("Total Offer Count", pd.Series([0] * len(df_view)))
-        .map(lambda x: parse_int(x, default=np.nan))
-        .fillna(0)
-        <= int(max_offer_cnt)
-    )
-    & (
-        df_view.get("Sales Rank: Current", pd.Series([0] * len(df_view)))
-        .map(lambda x: parse_int(x, default=np.nan))
-        .fillna(0)
-        <= int(max_rank)
-    )
+profit_amz_eur_ok = (
+    df_view["ProfitAmazonEUR"]
+    .map(lambda x: parse_float(x, default=np.nan))
+    .fillna(-9e9)
+    >= float(min_profit_eur)
 )
+profit_amz_pct_ok = (
+    df_view["ProfitAmazonPctView"]
+    .map(lambda x: parse_float(x, default=np.nan))
+    .fillna(-9e9)
+    >= float(min_profit_pct)
+)
+amz_share_ok = df_view["BB_AmzShare90d"].fillna(0.0) <= float(max_amz_share)
+offer_cnt_ok = (
+    df_view.get("Total Offer Count", pd.Series([0] * len(df_view)))
+    .map(lambda x: parse_int(x, default=np.nan))
+    .fillna(0)
+    <= int(max_offer_cnt)
+)
+rank_ok = (
+    df_view.get("Sales Rank: Current", pd.Series([0] * len(df_view)))
+    .map(lambda x: parse_int(x, default=np.nan))
+    .fillna(0)
+    <= int(max_rank)
+)
+
+mask = profit_amz_eur_ok & profit_amz_pct_ok & amz_share_ok & offer_cnt_ok & rank_ok
+
+filter_counts = {
+    f"Profit ≥ €{min_profit_eur}": int(profit_amz_eur_ok.sum()),
+    f"Profit ≥ {min_profit_pct}%": int(profit_amz_pct_ok.sum()),
+    f"Amz Share ≤ {max_amz_share}%": int(amz_share_ok.sum()),
+    f"Offer count ≤ {max_offer_cnt}": int(offer_cnt_ok.sum()),
+    f"Rank ≤ {max_rank}": int(rank_ok.sum()),
+}
+
+badges_html = " ".join(
+    [
+        f"<span class='badge badge-gray badge-xl'>{name} ({count})</span>"
+        for name, count in filter_counts.items()
+    ]
+)
+
+st.markdown(badges_html, unsafe_allow_html=True)
+
 df_view = df_view[mask]
 
 # Vista ESSENZIALE
