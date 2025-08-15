@@ -2,9 +2,14 @@ import subprocess
 import time
 import hashlib
 from pathlib import Path
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import pandas as pd
 import requests
 from playwright.sync_api import sync_playwright
+from score import compute_window_signal
 
 
 def _wait_for_server(url: str, timeout: float = 60.0) -> None:
@@ -25,7 +30,17 @@ def test_streamlit_expand_and_df_ess(tmp_path):
     subprocess.run(["playwright", "install", "chromium"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(["playwright", "install-deps"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    sample_file = Path(__file__).resolve().parents[1] / "sample_data" / "keepa_sample.xlsx"
+    repo_root = Path(__file__).resolve().parents[1]
+    sample_file = repo_root / "sample_data" / "keepa_sample.xlsx"
+    df = pd.read_excel(sample_file)
+    df["AMZ_OOS_90"] = [1, 0, 0] + [0] * (len(df) - 3)
+    df["BB_ZSCORE"] = [1.2, 0.0, 0.0] + [0.0] * (len(df) - 3)
+    df["AMZ_SHIP_DELAY"] = [False, True, False] + [False] * (len(df) - 3)
+    df["LD_IS_LOWEST"] = [False, False, True] + [False] * (len(df) - 3)
+    enriched_file = tmp_path / "keepa_sample_signals.xlsx"
+    df.to_excel(enriched_file, index=False)
+    expected_count = compute_window_signal(df).replace("", pd.NA).dropna().shape[0]
+    sample_file = enriched_file
 
     proc = subprocess.Popen(
         ["streamlit", "run", "app.py", "--server.headless=true", "--server.port=8501"],
@@ -71,6 +86,14 @@ def test_streamlit_expand_and_df_ess(tmp_path):
                 page.get_by_role("button", name=preset).click()
                 page.wait_for_selector("table")
                 assert page.locator("table").is_visible()
+            table = page.locator("table").first
+            total_rows = table.locator("tr").count() - 1
+            page.get_by_text("Solo con finestra favorevole").click()
+            page.wait_for_timeout(1000)
+            filtered_rows = table.locator("tr").count() - 1
+            assert filtered_rows == expected_count
+            for badge in ["OOS", "⏳", "⚡"]:
+                assert table.get_by_text(badge, exact=True).is_visible()
             browser.close()
     finally:
         proc.terminate()
