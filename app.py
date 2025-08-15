@@ -5,6 +5,7 @@
 # ---------------------------------------------------------
 
 import streamlit as st
+
 st.set_page_config(
     page_title="Amazon Market Analyzer — Opportunity 2.0",
     page_icon="🔎",
@@ -17,12 +18,22 @@ import numpy as np
 import json
 from loaders import load_data, default_discount_map
 from score import (
-    SHIPPING_COSTS, VAT_RATES, normalize_locale,
-    calculate_shipping_cost, calc_final_purchase_price,
-    compute_profits, compute_opportunity_score, compute_price_regime,
+    SHIPPING_COSTS,
+    VAT_RATES,
+    normalize_locale,
+    calculate_shipping_cost,
+    calc_final_purchase_price,
+    compute_profits,
+    compute_opportunity_score,
+    compute_price_regime,
     recompute_row_profit,
-    compute_amazon_risk, compute_quality_metrics, parse_float, parse_int,
-    DEFAULT_PENALTY_MAP, DEFAULT_PENALTY_THRESHOLD, DEFAULT_PENALTY_SUGGESTED,
+    compute_amazon_risk,
+    compute_quality_metrics,
+    parse_float,
+    parse_int,
+    DEFAULT_PENALTY_MAP,
+    DEFAULT_PENALTY_THRESHOLD,
+    DEFAULT_PENALTY_SUGGESTED,
 )
 from utils import load_preset, save_preset
 
@@ -144,6 +155,7 @@ DEFAULT_FILTERS = {
 # Helpers di formattazione/HTML
 # -----------------------
 
+
 def _safe(x):
     """Ritorna stringa formattata o '—' se NaN/None. Numeri con 2 decimali e virgola italiana."""
     try:
@@ -162,6 +174,7 @@ def _safe(x):
         return str(x)
     except Exception:
         return "—"
+
 
 def _badge(value, suffix="€", cls_prefix="badge-profit", display_value=None):
     """Badge XL colorato con colori customizzabili.
@@ -182,7 +195,8 @@ def _badge(value, suffix="€", cls_prefix="badge-profit", display_value=None):
         display_value = value
 
     if value is None or (isinstance(value, float) and np.isnan(value)):
-        cls = f"{cls_prefix}-neu"; txt = "—"
+        cls = f"{cls_prefix}-neu"
+        txt = "—"
     else:
         try:
             v = float(value)
@@ -199,8 +213,10 @@ def _badge(value, suffix="€", cls_prefix="badge-profit", display_value=None):
                 cls = f"{cls_prefix}-neu"
             txt = disp
         except Exception:
-            cls = f"{cls_prefix}-neu"; txt = "—"
+            cls = f"{cls_prefix}-neu"
+            txt = "—"
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
+
 
 def _z_badge(z):
     """Badge colorato per z-score: verde ≤ -1, rosso ≥ 1, grigio altrimenti."""
@@ -221,23 +237,27 @@ def _z_badge(z):
 
 def _flag_badge(val, txt_ok="No MAP", txt_bad="MAP"):
     if val is None or (isinstance(val, float) and np.isnan(val)):
-        cls = "badge-flag-neu"; txt = "N/A"
+        cls = "badge-flag-neu"
+        txt = "N/A"
     else:
         try:
             flag = bool(val)
         except Exception:
             flag = False
         if flag:
-            cls = "badge-flag-neg"; txt = txt_bad
+            cls = "badge-flag-neg"
+            txt = txt_bad
         else:
-            cls = "badge-flag-pos"; txt = txt_ok
+            cls = "badge-flag-pos"
+            txt = txt_ok
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
 
 def _risk_badge(value, threshold, suffix="%"):
     """Badge per rischi: verde se valore < soglia, rosso se >= soglia."""
     if value is None or (isinstance(value, float) and np.isnan(value)):
-        cls = "badge-profit-neu"; txt = "—"
+        cls = "badge-profit-neu"
+        txt = "—"
     else:
         try:
             v = float(value)
@@ -245,7 +265,8 @@ def _risk_badge(value, threshold, suffix="%"):
             cls = "badge-profit-pos" if v < threshold else "badge-profit-neg"
             txt = disp
         except Exception:
-            cls = "badge-profit-neu"; txt = "—"
+            cls = "badge-profit-neu"
+            txt = "—"
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
 
@@ -254,7 +275,9 @@ def _missing_columns(df: pd.DataFrame, required: list[str]) -> list[str]:
     return [c for c in required if c not in df.columns]
 
 
-def _validate_required_columns(df_orig: pd.DataFrame, df_tgt: pd.DataFrame, required: list[str]) -> None:
+def _validate_required_columns(
+    df_orig: pd.DataFrame, df_tgt: pd.DataFrame, required: list[str]
+) -> None:
     """Check both datasets for missing columns and report them together.
 
     Parameters
@@ -275,6 +298,7 @@ def _validate_required_columns(df_orig: pd.DataFrame, df_tgt: pd.DataFrame, requ
         for err in errors:
             st.error(err)
         st.stop()
+
 
 # -----------------------
 # THEME (dark minimal)
@@ -328,17 +352,24 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 st.sidebar.title("⚙️ Impostazioni")
 
 st.sidebar.subheader("Carica file")
-orig_file = st.sidebar.file_uploader("Lista di Origine", type=["xlsx","xls","csv"])
-tgt_file  = st.sidebar.file_uploader("Lista di Confronto", type=["xlsx","xls","csv"])
+orig_file = st.sidebar.file_uploader("Lista di Origine", type=["xlsx", "xls", "csv"])
+tgt_file = st.sidebar.file_uploader("Lista di Confronto", type=["xlsx", "xls", "csv"])
 
 st.sidebar.subheader("Prezzi da usare")
 price_cols_hint = [
-    "Buy Box 🚚: Current", "Amazon: Current", "New: Current",
-    "New, 3rd Party FBM 🚚: Current", "New, 3rd Party FBA: Current"
+    "Buy Box 🚚: Current",
+    "Amazon: Current",
+    "New: Current",
+    "New, 3rd Party FBM 🚚: Current",
+    "New, 3rd Party FBA: Current",
 ]
 
-origin_price_col = st.sidebar.selectbox("Prezzo Origine", options=price_cols_hint, index=0)
-target_price_col = st.sidebar.selectbox("Prezzo Target (Amazon)", options=price_cols_hint, index=0)
+origin_price_col = st.sidebar.selectbox(
+    "Prezzo Origine", options=price_cols_hint, index=0
+)
+target_price_col = st.sidebar.selectbox(
+    "Prezzo Target (Amazon)", options=price_cols_hint, index=0
+)
 
 st.sidebar.subheader("Parametri vendita")
 use_fba = st.sidebar.toggle("Usa FBA (considera Pick&Pack)", value=False)
@@ -348,7 +379,12 @@ site_price_override = st.sidebar.text_input(
 site_price_override_val = parse_float(site_price_override, default=None)
 
 st.sidebar.subheader("Sconto acquisto (default 21%)")
-disc_default = st.sidebar.slider("Sconto default per tutti i paesi", min_value=0, max_value=60, value=21, step=1) / 100.0
+disc_default = (
+    st.sidebar.slider(
+        "Sconto default per tutti i paesi", min_value=0, max_value=60, value=21, step=1
+    )
+    / 100.0
+)
 discount_map = {"discount_default_all": disc_default}
 
 st.sidebar.subheader("Preset")
@@ -365,14 +401,14 @@ current_weights_pillars = {
 current_weights_core = {
     k: st.session_state.get(k, v) for k, v in DEFAULT_WEIGHTS_CORE.items()
 }
-current_filters = {
-    k: st.session_state.get(k, v) for k, v in DEFAULT_FILTERS.items()
-}
+current_filters = {k: st.session_state.get(k, v) for k, v in DEFAULT_FILTERS.items()}
 
 preset_name = st.sidebar.text_input("Preset name", key="preset_name")
 col_save, col_load = st.sidebar.columns(2)
 if col_save.button("Save", use_container_width=True):
-    save_preset(preset_name, current_weights_pillars, current_weights_core, current_filters)
+    save_preset(
+        preset_name, current_weights_pillars, current_weights_core, current_filters
+    )
 if col_load.button("Load", use_container_width=True):
     data = load_preset(preset_name)
     if data:
@@ -409,25 +445,53 @@ if uploaded_preset is not None:
 
 st.sidebar.subheader("Pesi pilastri (Opportunity 2.0)")
 wP = st.sidebar.slider(
-    "Profit", 0, 60, value=st.session_state.get("wP", DEFAULT_WEIGHTS_PILLARS["wP"]), key="wP"
+    "Profit",
+    0,
+    60,
+    value=st.session_state.get("wP", DEFAULT_WEIGHTS_PILLARS["wP"]),
+    key="wP",
 )
 wK = st.sidebar.slider(
-    "Edge", 0, 40, value=st.session_state.get("wK", DEFAULT_WEIGHTS_PILLARS["wK"]), key="wK"
+    "Edge",
+    0,
+    40,
+    value=st.session_state.get("wK", DEFAULT_WEIGHTS_PILLARS["wK"]),
+    key="wK",
 )
 wN = st.sidebar.slider(
-    "Demand", 0, 40, value=st.session_state.get("wN", DEFAULT_WEIGHTS_PILLARS["wN"]), key="wN"
+    "Demand",
+    0,
+    40,
+    value=st.session_state.get("wN", DEFAULT_WEIGHTS_PILLARS["wN"]),
+    key="wN",
 )
 wX = st.sidebar.slider(
-    "Competition", 0, 30, value=st.session_state.get("wX", DEFAULT_WEIGHTS_PILLARS["wX"]), key="wX"
+    "Competition",
+    0,
+    30,
+    value=st.session_state.get("wX", DEFAULT_WEIGHTS_PILLARS["wX"]),
+    key="wX",
 )
 wM = st.sidebar.slider(
-    "AmazonRisk", 0, 30, value=st.session_state.get("wM", DEFAULT_WEIGHTS_PILLARS["wM"]), key="wM"
+    "AmazonRisk",
+    0,
+    30,
+    value=st.session_state.get("wM", DEFAULT_WEIGHTS_PILLARS["wM"]),
+    key="wM",
 )
 wL = st.sidebar.slider(
-    "Stability", 0, 30, value=st.session_state.get("wL", DEFAULT_WEIGHTS_PILLARS["wL"]), key="wL"
+    "Stability",
+    0,
+    30,
+    value=st.session_state.get("wL", DEFAULT_WEIGHTS_PILLARS["wL"]),
+    key="wL",
 )
 wR = st.sidebar.slider(
-    "Quality", 0, 30, value=st.session_state.get("wR", DEFAULT_WEIGHTS_PILLARS["wR"]), key="wR"
+    "Quality",
+    0,
+    30,
+    value=st.session_state.get("wR", DEFAULT_WEIGHTS_PILLARS["wR"]),
+    key="wR",
 )
 weights_pillars = dict(wP=wP, wK=wK, wN=wN, wX=wX, wM=wM, wL=wL, wR=wR)
 
@@ -488,7 +552,15 @@ Gamma = st.sidebar.slider(
     step=0.1,
     key="Gamma",
 )
-weights_core = dict(Epsilon=Epsilon, Theta=Theta, Alpha=Alpha, Beta=Beta, Delta=Delta, Zeta=Zeta, Gamma=Gamma)
+weights_core = dict(
+    Epsilon=Epsilon,
+    Theta=Theta,
+    Alpha=Alpha,
+    Beta=Beta,
+    Delta=Delta,
+    Zeta=Zeta,
+    Gamma=Gamma,
+)
 
 st.sidebar.subheader("Penalties")
 penalty_map = st.sidebar.slider(
@@ -538,7 +610,9 @@ max_amz_share = st.sidebar.number_input(
     step=1.0,
     key="max_amz_share",
 )
-exclude_amz_bb = st.sidebar.checkbox("Escludi %Amazon BB sopra soglia", value=True, key="exclude_amz_bb")
+exclude_amz_bb = st.sidebar.checkbox(
+    "Escludi %Amazon BB sopra soglia", value=True, key="exclude_amz_bb"
+)
 max_offer_cnt = st.sidebar.number_input(
     "Max Offer Count",
     value=int(st.session_state.get("max_offer_cnt", DEFAULT_FILTERS["max_offer_cnt"])),
@@ -557,10 +631,12 @@ max_rank = st.sidebar.number_input(
 # -----------------------
 st.title("🔎 Amazon Market Analyzer — Opportunity 2.0")
 
-colA, colB, colC = st.columns([1.2,1,1])
+colA, colB, colC = st.columns([1.2, 1, 1])
 with colA:
-    st.markdown("**Vista Essenziale** — identità + prezzi chiave + profitti Amazon/HDG. "
-                "Pannelli avanzati disponibili a richiesta.")
+    st.markdown(
+        "**Vista Essenziale** — identità + prezzi chiave + profitti Amazon/HDG. "
+        "Pannelli avanzati disponibili a richiesta."
+    )
 with colB:
     st.metric("Sconto default", f"{int(disc_default*100)}%")
 with colC:
@@ -594,13 +670,11 @@ dfp = compute_profits(
     use_fba=use_fba,
     site_price=site_price_override_val,
     payment_fee_site=0.05,
-    default_discount_all=disc_default
+    default_discount_all=disc_default,
 )
 
 # Colonna modificabile manualmente con fallback al Buy Box corrente
-dfp["Prezzo Sito"] = dfp["SitePriceGross"].fillna(
-    dfp.get("Buy Box 🚚: Current")
-)
+dfp["Prezzo Sito"] = dfp["SitePriceGross"].fillna(dfp.get("Buy Box 🚚: Current"))
 
 # Opportunity Score
 dfp["OpportunityScore"] = compute_opportunity_score(
@@ -612,12 +686,47 @@ dfp["OpportunityScore"] = compute_opportunity_score(
     penalty_suggested=penalty_suggested,
 )
 
+# Apply manual site price edits from previous interactions
+if "dfp_editor" in st.session_state:
+    edited_df = st.session_state["dfp_editor"]
+    base_df = dfp.head(len(edited_df))
+    base_prices = base_df["Prezzo Sito"].astype(float).fillna(-9e9)
+    edited_prices = edited_df["Prezzo Sito"].astype(float).fillna(-9e9)
+    changed = edited_prices != base_prices
+    if changed.any():
+        for idx in edited_df.index[changed]:
+            new_price = edited_df.at[idx, "Prezzo Sito"]
+            dfp.at[idx, "Prezzo Sito"] = new_price
+            dfp.at[idx, "SitePriceGross"] = new_price
+            row = dfp.loc[idx].rename(
+                {origin_price_col: "Price_Base", target_price_col: "BuyBoxPrice"}
+            )
+            row["SitePriceGross"] = new_price
+            updated = recompute_row_profit(
+                row,
+                use_fba=use_fba,
+                site_price_col="SitePriceGross",
+                payment_fee_site=0.05,
+            )
+            for col in [
+                "ProfitAmazonEUR",
+                "ProfitAmazonPct",
+                "ProfitSiteEUR",
+                "ProfitSitePct",
+                "OpportunityScore",
+                "SitePriceGross",
+            ]:
+                dfp.at[idx, col] = updated[col]
+            dfp.at[idx, "Prezzo Sito"] = updated["SitePriceGross"]
+
+
 # Filtri rapidi
 def _to_pct(x):
     try:
-        return float(x)*100.0
+        return float(x) * 100.0
     except Exception:
         return np.nan
+
 
 df_view = dfp.copy()
 df_view["ProfitAmazonPctView"] = df_view["ProfitAmazonPct"].map(_to_pct)
@@ -628,34 +737,22 @@ df_view["BB_AmzShare90d"] = (
     .astype(float)
 )
 
-profit_amz_eur_ok = (
-    df_view["ProfitAmazonEUR"]
-    .map(lambda x: parse_float(x, default=np.nan))
-    .fillna(-9e9)
-    >= float(min_profit_eur)
-)
-profit_amz_pct_ok = (
-    df_view["ProfitAmazonPctView"]
-    .map(lambda x: parse_float(x, default=np.nan))
-    .fillna(-9e9)
-    >= float(min_profit_pct)
-)
+profit_amz_eur_ok = df_view["ProfitAmazonEUR"].map(
+    lambda x: parse_float(x, default=np.nan)
+).fillna(-9e9) >= float(min_profit_eur)
+profit_amz_pct_ok = df_view["ProfitAmazonPctView"].map(
+    lambda x: parse_float(x, default=np.nan)
+).fillna(-9e9) >= float(min_profit_pct)
 if exclude_amz_bb:
     amz_share_ok = df_view["BB_AmzShare90d"].fillna(0.0) <= float(max_amz_share)
 else:
     amz_share_ok = pd.Series(True, index=df_view.index)
-offer_cnt_ok = (
-    df_view.get("Total Offer Count", pd.Series([0] * len(df_view)))
-    .map(lambda x: parse_int(x, default=np.nan))
-    .fillna(0)
-    <= int(max_offer_cnt)
-)
-rank_ok = (
-    df_view.get("Sales Rank: Current", pd.Series([0] * len(df_view)))
-    .map(lambda x: parse_int(x, default=np.nan))
-    .fillna(0)
-    <= int(max_rank)
-)
+offer_cnt_ok = df_view.get("Total Offer Count", pd.Series([0] * len(df_view))).map(
+    lambda x: parse_int(x, default=np.nan)
+).fillna(0) <= int(max_offer_cnt)
+rank_ok = df_view.get("Sales Rank: Current", pd.Series([0] * len(df_view))).map(
+    lambda x: parse_int(x, default=np.nan)
+).fillna(0) <= int(max_rank)
 
 mask = profit_amz_eur_ok & profit_amz_pct_ok & amz_share_ok & offer_cnt_ok & rank_ok
 
@@ -665,10 +762,12 @@ filter_counts = {
 }
 if exclude_amz_bb:
     filter_counts[f"Amz Share ≤ {max_amz_share}%"] = int(amz_share_ok.sum())
-filter_counts.update({
-    f"Offer count ≤ {max_offer_cnt}": int(offer_cnt_ok.sum()),
-    f"Rank ≤ {max_rank}": int(rank_ok.sum()),
-})
+filter_counts.update(
+    {
+        f"Offer count ≤ {max_offer_cnt}": int(offer_cnt_ok.sum()),
+        f"Rank ≤ {max_rank}": int(rank_ok.sum()),
+    }
+)
 
 badges_html = " ".join(
     [
@@ -681,14 +780,36 @@ st.markdown(badges_html, unsafe_allow_html=True)
 
 df_view = df_view[mask]
 
+csv_view = df_view.to_csv(index=False, sep=";", decimal=",").encode("utf-8")
+st.download_button(
+    "📥 Scarica CSV filtrato",
+    data=csv_view,
+    file_name="dati_filtrati.csv",
+    mime="text/csv",
+)
+
 # Vista ESSENZIALE
 cols_ess = []
-for c in ["ASIN","Title","Brand","Locale",
-          origin_price_col, "PurchaseNetExVAT", "Package: Weight (g)", "Item: Weight (g)",
-          target_price_col, "ProfitAmazonEUR","ProfitAmazonPctView",
-          "SitePriceGross","ProfitSiteEUR","ProfitSitePctView",
-          "Sales Rank: Current", "Buy Box: % Amazon 90 days", "Return Rate",
-          "OpportunityScore"]:
+for c in [
+    "ASIN",
+    "Title",
+    "Brand",
+    "Locale",
+    origin_price_col,
+    "PurchaseNetExVAT",
+    "Package: Weight (g)",
+    "Item: Weight (g)",
+    target_price_col,
+    "ProfitAmazonEUR",
+    "ProfitAmazonPctView",
+    "SitePriceGross",
+    "ProfitSiteEUR",
+    "ProfitSitePctView",
+    "Sales Rank: Current",
+    "Buy Box: % Amazon 90 days",
+    "Return Rate",
+    "OpportunityScore",
+]:
     if c in df_view.columns:
         cols_ess.append(c)
 
@@ -696,13 +817,15 @@ if len(cols_ess) == 0:
     st.error("Non sono presenti le colonne attese per la Vista Essenziale.")
     st.stop()
 
-df_ess = df_view[cols_ess].rename(columns={
-    origin_price_col: "Orig Price",
-    target_price_col: "BB Target",
-    "ProfitAmazonPctView": "Profit Amazon %",
-    "ProfitSitePctView": "Profit HDG %",
-    "SitePriceGross": "Prezzo HDG",
-})
+df_ess = df_view[cols_ess].rename(
+    columns={
+        origin_price_col: "Orig Price",
+        target_price_col: "BB Target",
+        "ProfitAmazonPctView": "Profit Amazon %",
+        "ProfitSitePctView": "Profit HDG %",
+        "SitePriceGross": "Prezzo HDG",
+    }
+)
 
 # Ordinamento per score
 if "OpportunityScore" in df_ess.columns:
@@ -712,15 +835,33 @@ if "OpportunityScore" in df_ess.columns:
 st.markdown("### 📋 Elenco prodotti (Essenziale)")
 
 header = [
-    "ASIN","Title","Brand","Locale",
-    "Orig Price","Costo ex-IVA","Peso (g)",
-    "BB Target","Profit Amazon €","Profit Amazon %",
-    "Prezzo HDG","Profit HDG €","Profit HDG %",
-    "Rank","%Amazon 90d","Return","Score"
+    "ASIN",
+    "Title",
+    "Brand",
+    "Locale",
+    "Orig Price",
+    "Costo ex-IVA",
+    "Peso (g)",
+    "BB Target",
+    "Profit Amazon €",
+    "Profit Amazon %",
+    "Prezzo HDG",
+    "Profit HDG €",
+    "Profit HDG %",
+    "Rank",
+    "%Amazon 90d",
+    "Return",
+    "Score",
 ]
 
 rows_html = []
-rows_html.append("<tr>" + "".join([f"<th style='text-align:left;padding:8px 10px'>{h}</th>" for h in header]) + "</tr>")
+rows_html.append(
+    "<tr>"
+    + "".join(
+        [f"<th style='text-align:left;padding:8px 10px'>{h}</th>" for h in header]
+    )
+    + "</tr>"
+)
 
 for _, r in df_ess.iterrows():
     peso = r.get("Package: Weight (g)", np.nan)
@@ -728,10 +869,10 @@ for _, r in df_ess.iterrows():
         peso = r.get("Item: Weight (g)", np.nan)
 
     row = [
-        r.get("ASIN",""),
-        r.get("Title",""),
-        r.get("Brand",""),
-        r.get("Locale",""),
+        r.get("ASIN", ""),
+        r.get("Title", ""),
+        r.get("Brand", ""),
+        r.get("Locale", ""),
         f"{_safe(r.get('Orig Price'))}",
         f"{_safe(r.get('PurchaseNetExVAT'))}",
         f"{_safe(peso)}",
@@ -746,7 +887,11 @@ for _, r in df_ess.iterrows():
         f"{_safe(r.get('Return Rate'))}",
         f"{_safe(r.get('OpportunityScore'))}",
     ]
-    rows_html.append("<tr>" + "".join([f"<td style='padding:8px 10px'>{cell}</td>" for cell in row]) + "</tr>")
+    rows_html.append(
+        "<tr>"
+        + "".join([f"<td style='padding:8px 10px'>{cell}</td>" for cell in row])
+        + "</tr>"
+    )
 
 html_table = f"""
 <div class="card">
@@ -765,128 +910,98 @@ df_sel = dfp[dfp["ASIN"] == asin_sel]
 reg = compute_price_regime(df_sel, target_price_col)
 risk = compute_amazon_risk(df_sel)
 quality = compute_quality_metrics(df_sel)
-with st.expander("Price Regime"):
-    st.write("Media 30g:", _safe(reg.get("BB_MA_30")))
-    st.write("Media 90g:", _safe(reg.get("BB_MA_90")))
-    st.write("Media 180g:", _safe(reg.get("BB_MA_180")))
-    st.write("Media 365g:", _safe(reg.get("BB_MA_365")))
-    st.write("Deviazione std:", _safe(reg.get("BB_STD")))
-    st.write("Banda -1σ:", _safe(reg.get("BB_LOWER_1SD")))
-    st.write("Banda +1σ:", _safe(reg.get("BB_UPPER_1SD")))
-    st.markdown("Z-score attuale: " + _z_badge(reg.get("BB_ZSCORE")), unsafe_allow_html=True)
+st.markdown("#### Price Regime")
+st.write("Media 30g:", _safe(reg.get("BB_MA_30")))
+st.write("Media 90g:", _safe(reg.get("BB_MA_90")))
+st.write("Media 180g:", _safe(reg.get("BB_MA_180")))
+st.write("Media 365g:", _safe(reg.get("BB_MA_365")))
+st.write("Deviazione std:", _safe(reg.get("BB_STD")))
+st.write("Banda -1σ:", _safe(reg.get("BB_LOWER_1SD")))
+st.write("Banda +1σ:", _safe(reg.get("BB_UPPER_1SD")))
+st.markdown(
+    "Z-score attuale: " + _z_badge(reg.get("BB_ZSCORE")), unsafe_allow_html=True
+)
 
-with st.expander("Competition Map"):
-    row = df_sel.iloc[0] if not df_sel.empty else {}
-    st.write("Total Offer Count:", _safe(row.get("Total Offer Count")))
-    st.write(
-        "Buy Box: Winner Count 90 days:",
-        _safe(row.get("Buy Box: Winner Count 90 days")),
-    )
-    st.write("Buy Box: Unqualified:", _safe(row.get("Buy Box: Unqualified")))
-    st.markdown(
-        "MAP restriction: " + _flag_badge(row.get("MAP restriction")),
-        unsafe_allow_html=True,
-    )
+st.markdown("#### Competition Map")
+row = df_sel.iloc[0] if not df_sel.empty else {}
+st.write("Total Offer Count:", _safe(row.get("Total Offer Count")))
+st.write(
+    "Buy Box: Winner Count 90 days:",
+    _safe(row.get("Buy Box: Winner Count 90 days")),
+)
+st.write("Buy Box: Unqualified:", _safe(row.get("Buy Box: Unqualified")))
+st.markdown(
+    "MAP restriction: " + _flag_badge(row.get("MAP restriction")),
+    unsafe_allow_html=True,
+)
 
-with st.expander("Amazon Risk & Events"):
-    st.markdown(
-        "%Amazon Buy Box 30g: " + _risk_badge(risk.get("BB_AMZ_30"), 50, "%"),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "%Amazon Buy Box 90g: " + _risk_badge(risk.get("BB_AMZ_90"), 50, "%"),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "%Amazon Buy Box 180g: " + _risk_badge(risk.get("BB_AMZ_180"), 50, "%"),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "%Amazon Buy Box 365g: " + _risk_badge(risk.get("BB_AMZ_365"), 50, "%"),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "Amazon: OOS Count 90 days: " + _risk_badge(risk.get("AMZ_OOS_90"), 5, ""),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "Amazon: Amazon offer shipping delay: "
-        + _flag_badge(risk.get("AMZ_SHIP_DELAY"), txt_ok="No delay", txt_bad="Delay"),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "Lightning Deals: Is Lowest: "
-        + _flag_badge(risk.get("LD_IS_LOWEST"), txt_ok="No", txt_bad="Yes"),
-        unsafe_allow_html=True,
-    )
+st.markdown("#### Amazon Risk & Events")
+st.markdown(
+    "%Amazon Buy Box 30g: " + _risk_badge(risk.get("BB_AMZ_30"), 50, "%"),
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "%Amazon Buy Box 90g: " + _risk_badge(risk.get("BB_AMZ_90"), 50, "%"),
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "%Amazon Buy Box 180g: " + _risk_badge(risk.get("BB_AMZ_180"), 50, "%"),
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "%Amazon Buy Box 365g: " + _risk_badge(risk.get("BB_AMZ_365"), 50, "%"),
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "Amazon: OOS Count 90 days: " + _risk_badge(risk.get("AMZ_OOS_90"), 5, ""),
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "Amazon: Amazon offer shipping delay: "
+    + _flag_badge(risk.get("AMZ_SHIP_DELAY"), txt_ok="No delay", txt_bad="Delay"),
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "Lightning Deals: Is Lowest: "
+    + _flag_badge(risk.get("LD_IS_LOWEST"), txt_ok="No", txt_bad="Yes"),
+    unsafe_allow_html=True,
+)
 
-with st.expander("Quality & Returns"):
-    ret = quality.get("Return Rate")
-    st.markdown(
-        "Return Rate: "
-        + _badge(-ret, "%", cls_prefix="badge-quality", display_value=ret),
-        unsafe_allow_html=True,
-    )
-    rating = quality.get("Reviews: Rating")
-    st.markdown(
-        "Reviews Rating: "
-        + _badge(
-            rating - 4.0,
-            "★",
-            cls_prefix="badge-quality",
-            display_value=rating,
-        ),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "Review Momentum: "
-        + _badge(
-            quality.get("ReviewsMomentum"),
-            "",
-            cls_prefix="badge-quality",
-        ),
-        unsafe_allow_html=True,
-    )
+st.markdown("#### Quality & Returns")
+ret = quality.get("Return Rate")
+st.markdown(
+    "Return Rate: " + _badge(-ret, "%", cls_prefix="badge-quality", display_value=ret),
+    unsafe_allow_html=True,
+)
+rating = quality.get("Reviews: Rating")
+st.markdown(
+    "Reviews Rating: "
+    + _badge(
+        rating - 4.0,
+        "★",
+        cls_prefix="badge-quality",
+        display_value=rating,
+    ),
+    unsafe_allow_html=True,
+)
+st.markdown(
+    "Review Momentum: "
+    + _badge(
+        quality.get("ReviewsMomentum"),
+        "",
+        cls_prefix="badge-quality",
+    ),
+    unsafe_allow_html=True,
+)
 
 # Pannello avanzato opzionale
 with st.expander("Dettagli avanzati / diagnostica"):
     st.write("Prime righe dataset unito (post-calcoli):")
     cols_disable = [c for c in dfp.columns if c != "Prezzo Sito"]
-    df_edit = dfp.head(50).copy()
-    edited_df = st.data_editor(
-        df_edit,
-        disabled=cols_disable,
-        key="dfp_editor"
-    )
-    changed = edited_df["Prezzo Sito"] != df_edit["Prezzo Sito"]
-    if changed.any():
-        for idx in edited_df.index[changed]:
-            new_price = edited_df.at[idx, "Prezzo Sito"]
-            dfp.at[idx, "Prezzo Sito"] = new_price
-            dfp.at[idx, "SitePriceGross"] = new_price
-            row = dfp.loc[idx].rename({
-                origin_price_col: "Price_Base",
-                target_price_col: "BuyBoxPrice"
-            })
-            row["SitePriceGross"] = new_price
-            updated = recompute_row_profit(
-                row,
-                use_fba=use_fba,
-                site_price_col="SitePriceGross",
-                payment_fee_site=0.05,
-            )
-            for col in [
-                "ProfitAmazonEUR",
-                "ProfitAmazonPct",
-                "ProfitSiteEUR",
-                "ProfitSitePct",
-                "OpportunityScore",
-                "SitePriceGross",
-            ]:
-                dfp.at[idx, col] = updated[col]
-            dfp.at[idx, "Prezzo Sito"] = updated["SitePriceGross"]
-        df_edit = dfp.head(50)
-    st.dataframe(df_edit)
+    if st.checkbox("Abilita editor prezzi", key="show_editor"):
+        st.data_editor(dfp.head(50).copy(), disabled=cols_disable, key="dfp_editor")
     st.caption("Suggerimento: usa i preset in sidebar per Flip / Margine / Volume.")
 
-st.success("Opportunity Score 2.0, profitti Amazon/HDG, sconto default 21% e Vista Essenziale attivi.")
+st.success(
+    "Opportunity Score 2.0, profitti Amazon/HDG, sconto default 21% e Vista Essenziale attivi."
+)
