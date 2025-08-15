@@ -60,6 +60,10 @@ SHIPPING_COSTS = [
     (5001, 10000, 12.50),
 ]
 
+DEFAULT_PENALTY_MAP = 0.20
+DEFAULT_PENALTY_THRESHOLD = 0.15
+DEFAULT_PENALTY_SUGGESTED = 0.10
+
 # ---------------------------
 # Utility
 # ---------------------------
@@ -449,11 +453,15 @@ def compute_opportunity_score(
     df: pd.DataFrame,
     weights_pillars: dict[str, float],
     weights_core: dict[str, float],
+    penalty_map: float = DEFAULT_PENALTY_MAP,
+    penalty_threshold: float = DEFAULT_PENALTY_THRESHOLD,
+    penalty_suggested: float = DEFAULT_PENALTY_SUGGESTED,
 ) -> pd.Series:
     """
     Calcola OpportunityScore (0-100) usando 7 pilastri (+ integrazione pesi storici su Profit).
     weights_pillars keys: wP,wK,wN,wX,wM,wL,wR
     weights_core keys: Epsilon,Theta,Alpha,Beta,Delta,Zeta,Gamma
+    penalty_* parametri per sanzioni MAP e prezzi target/suggeriti
     """
     # ------ Profit component (Epsilon/Theta) ------
     nz_profit_pct = _norm_percentile(
@@ -492,8 +500,8 @@ def compute_opportunity_score(
 
     thr = _col(df, "Competitive Price Threshold", np.nan).map(lambda x: parse_float(x, default=np.nan))
     sug = _col(df, "Suggested Lower Price", np.nan).map(lambda x: parse_float(x, default=np.nan))
-    pen_thr = _to_bool_series(bb_cur > thr).astype(float) * 0.15
-    pen_sug = _to_bool_series(bb_cur > sug).astype(float) * 0.10
+    pen_thr = _to_bool_series(bb_cur > thr).astype(float) * penalty_threshold
+    pen_sug = _to_bool_series(bb_cur > sug).astype(float) * penalty_suggested
 
     kappa = (edge_base - pen_thr - pen_sug).clip(0, 1)
 
@@ -510,7 +518,7 @@ def compute_opportunity_score(
     offer   = _norm_percentile(_col(df, "Total Offer Count", 0.0).map(lambda x: parse_int(x, default=np.nan)))
     winner  = 1.0 - _norm_percentile(_col(df, "Buy Box: Winner Count 90 days", 0.0).map(lambda x: parse_int(x, default=np.nan)))
     unqual  = _norm_percentile(_col(df, "Buy Box: Unqualified", 0.0).map(lambda x: parse_int(x, default=np.nan)))
-    map_pen = _to_bool_series(_col(df, "MAP restriction", False)).astype(float) * 0.2
+    map_pen = _to_bool_series(_col(df, "MAP restriction", False)).astype(float) * penalty_map
     xi = (1.0 - (0.5*offer + 0.3*winner) + 0.2*unqual - map_pen).clip(0,1)
 
     # ------ Mu (AmazonRisk) ------
