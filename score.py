@@ -395,6 +395,36 @@ def compute_profits(
 
     return df
 
+
+def recompute_row_profit(
+    row: pd.Series,
+    use_fba: bool,
+    payment_fee_site: float = 0.05,
+) -> pd.Series:
+    """Recalculate profit fields and opportunity score for a single row.
+
+    The ``row`` is converted to a one-row ``DataFrame`` so that the existing
+    :func:`compute_profits` and :func:`compute_opportunity_score` helpers can be
+    reused without duplicating logic.
+
+    It expects standardised purchase/sale columns named ``Price_Base`` and
+    ``BuyBoxPrice``.  The site price should be provided in ``SitePriceGross``.
+    Any profit or score columns returned by the helpers are merged back into
+    the resulting ``Series``.
+    """
+
+    df_single = row.to_frame().T
+    df_single = compute_profits(
+        df_single,
+        price_col_origin="Price_Base",
+        price_col_target_bb="BuyBoxPrice",
+        use_fba=use_fba,
+        site_price=row.get("SitePriceGross"),
+        payment_fee_site=payment_fee_site,
+    )
+    df_single["OpportunityScore"] = compute_opportunity_score(df_single, {}, {})
+    return df_single.iloc[0]
+
 # ---------------------------
 # Simple scoring helpers
 # ---------------------------
