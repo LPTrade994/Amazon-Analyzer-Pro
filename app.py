@@ -537,6 +537,7 @@ max_amz_share = st.sidebar.number_input(
     step=1.0,
     key="max_amz_share",
 )
+exclude_amz_bb = st.sidebar.checkbox("Escludi %Amazon BB sopra soglia", value=True, key="exclude_amz_bb")
 max_offer_cnt = st.sidebar.number_input(
     "Max Offer Count",
     value=int(st.session_state.get("max_offer_cnt", DEFAULT_FILTERS["max_offer_cnt"])),
@@ -633,7 +634,10 @@ profit_amz_pct_ok = (
     .fillna(-9e9)
     >= float(min_profit_pct)
 )
-amz_share_ok = df_view["BB_AmzShare90d"].fillna(0.0) <= float(max_amz_share)
+if exclude_amz_bb:
+    amz_share_ok = df_view["BB_AmzShare90d"].fillna(0.0) <= float(max_amz_share)
+else:
+    amz_share_ok = pd.Series(True, index=df_view.index)
 offer_cnt_ok = (
     df_view.get("Total Offer Count", pd.Series([0] * len(df_view)))
     .map(lambda x: parse_int(x, default=np.nan))
@@ -652,10 +656,13 @@ mask = profit_amz_eur_ok & profit_amz_pct_ok & amz_share_ok & offer_cnt_ok & ran
 filter_counts = {
     f"Profit ≥ €{min_profit_eur}": int(profit_amz_eur_ok.sum()),
     f"Profit ≥ {min_profit_pct}%": int(profit_amz_pct_ok.sum()),
-    f"Amz Share ≤ {max_amz_share}%": int(amz_share_ok.sum()),
+}
+if exclude_amz_bb:
+    filter_counts[f"Amz Share ≤ {max_amz_share}%"] = int(amz_share_ok.sum())
+filter_counts.update({
     f"Offer count ≤ {max_offer_cnt}": int(offer_cnt_ok.sum()),
     f"Rank ≤ {max_rank}": int(rank_ok.sum()),
-}
+})
 
 badges_html = " ".join(
     [
