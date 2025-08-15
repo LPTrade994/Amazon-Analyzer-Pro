@@ -596,6 +596,11 @@ dfp = compute_profits(
     default_discount_all=disc_default
 )
 
+# Colonna modificabile manualmente con fallback al Buy Box corrente
+dfp["Prezzo Sito"] = dfp["SitePriceGross"].fillna(
+    dfp.get("Buy Box 🚚: Current")
+)
+
 # Opportunity Score
 dfp["OpportunityScore"] = compute_opportunity_score(
     dfp,
@@ -845,7 +850,14 @@ with st.expander("Quality & Returns"):
 # Pannello avanzato opzionale
 with st.expander("Dettagli avanzati / diagnostica"):
     st.write("Prime righe dataset unito (post-calcoli):")
-    st.dataframe(dfp.head(50))
+    cols_disable = [c for c in dfp.columns if c != "Prezzo Sito"]
+    edited_df = st.data_editor(
+        dfp.head(50),
+        disabled=cols_disable,
+        key="dfp_editor"
+    )
+    dfp.loc[edited_df.index, "Prezzo Sito"] = edited_df["Prezzo Sito"]
+    dfp.loc[edited_df.index, "SitePriceGross"] = edited_df["Prezzo Sito"]
     st.caption("Suggerimento: usa i preset in sidebar per Flip / Margine / Volume.")
 
 st.success("Opportunity Score 2.0, profitti Amazon/HDG, sconto default 21% e Vista Essenziale attivi.")
