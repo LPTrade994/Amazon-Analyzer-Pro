@@ -7,13 +7,15 @@ This project contains a Streamlit dashboard for analyzing product arbitrage oppo
 - **Python**: 3.10 or higher is recommended.
 - Install dependencies either by running `./setup.sh` or manually with `pip install -r requirements.txt`.
 
-## Launching the App
+## Quick Start
 
-After installing dependencies, start the dashboard with:
+1. Install the required packages using `./setup.sh` or `pip install -r requirements.txt`.
+2. Launch the dashboard:
 
-```bash
-streamlit run app.py
-```
+   ```bash
+   streamlit run app.py
+   ```
+3. In the web interface, upload the origin marketplace file and one or more comparison files to begin analysis.
 
 ## Configuration
 
@@ -34,14 +36,11 @@ PASSWORD = "your_password"
 
 ## Keepa Export Files
 
-The application expects Keepa CSV/XLSX exports for both the origin marketplace and the comparison marketplaces. Multiple comparison files can be uploaded at once and will be merged automatically. Essential headers include:
+The application expects Keepa CSV/XLSX exports for both the origin marketplace and the comparison marketplaces. Multiple comparison files can be uploaded at once and will be merged automatically.
 
-- `ASIN`
-- `Title`
-- `Locale`
-- Price columns: `Buy Box 🚚: Current`, `Amazon: Current`, `New: Current`
-- Metrics: `Sales Rank: Current`, `Sales Rank: 30 days avg.`, `Bought in past month`, `New Offer Count: Current`
-- Optional data: `Brand`, `Package: Dimension (cm³)`, `Weight`, `Item Weight`, `Package: Weight (kg)` or `Package: Weight (g)`
+| Mandatory columns | Optional columns |
+| ----------------- | ---------------- |
+| `ASIN`<br>`Title`<br>`Locale`<br>`Buy Box 🚚: Current`<br>`Amazon: Current`<br>`New: Current`<br>`Sales Rank: Current`<br>`Sales Rank: 30 days avg.`<br>`Bought in past month`<br>`New Offer Count: Current` | `Brand`<br>`Package: Dimension (cm³)`<br>`Weight`<br>`Item Weight`<br>`Package: Weight (kg)`<br>`Package: Weight (g)` |
 
 These headers must be present (with `(base)` or `(comp)` suffixes after upload) for correct processing.
 
