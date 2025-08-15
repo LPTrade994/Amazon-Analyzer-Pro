@@ -200,6 +200,32 @@ def compute_price_regime(df: pd.DataFrame, price_col: str) -> pd.Series:
         }
     )
 
+
+def compute_amazon_risk(df: pd.DataFrame) -> pd.Series:
+    """Normalizza metriche rischio Amazon/Lightning."""
+    row = df.iloc[0] if not df.empty else {}
+
+    def _p(name: str) -> float:
+        return parse_float(row.get(name), default=np.nan)
+
+    def _b(name: str) -> bool | None:
+        val = row.get(name, np.nan)
+        if pd.isna(val):
+            return None
+        return bool(_to_bool_series(pd.Series([val])).iloc[0])
+
+    return pd.Series(
+        {
+            "BB_AMZ_30": _p("Buy Box: % Amazon 30 days"),
+            "BB_AMZ_90": _p("Buy Box: % Amazon 90 days"),
+            "BB_AMZ_180": _p("Buy Box: % Amazon 180 days"),
+            "BB_AMZ_365": _p("Buy Box: % Amazon 365 days"),
+            "AMZ_OOS_90": parse_int(row.get("Amazon: OOS Count 90 days"), default=np.nan),
+            "AMZ_SHIP_DELAY": _b("Amazon: Amazon offer shipping delay"),
+            "LD_IS_LOWEST": _b("Lightning Deals: Is Lowest"),
+        }
+    )
+
 # ---------------------------
 # Logica costo d’acquisto (invariata, default sconto 21%)
 # ---------------------------
