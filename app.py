@@ -14,6 +14,7 @@ st.set_page_config(
 
 import pandas as pd
 import numpy as np
+import json
 from loaders import load_data, default_discount_map
 from score import (
     SHIPPING_COSTS, VAT_RATES, normalize_locale,
@@ -21,7 +22,7 @@ from score import (
     compute_profits, compute_opportunity_score, compute_price_regime,
     compute_amazon_risk, compute_quality_metrics, parse_float, parse_int
 )
-from utils import load_preset
+from utils import load_preset, save_preset
 
 # Presets for quick score configurations
 PRESETS = {
@@ -106,6 +107,35 @@ PRESETS = {
             "max_rank": 400000,
         },
     },
+}
+
+# Default values used for widgets and preset handling
+DEFAULT_WEIGHTS_PILLARS = {
+    "wP": 40,
+    "wK": 15,
+    "wN": 15,
+    "wX": 10,
+    "wM": 8,
+    "wL": 7,
+    "wR": 5,
+}
+
+DEFAULT_WEIGHTS_CORE = {
+    "Epsilon": 3.0,
+    "Theta": 1.5,
+    "Alpha": 1.0,
+    "Beta": 1.0,
+    "Delta": 1.0,
+    "Zeta": 1.0,
+    "Gamma": 2.0,
+}
+
+DEFAULT_FILTERS = {
+    "min_profit_eur": 5.0,
+    "min_profit_pct": 15.0,
+    "max_amz_share": 50.0,
+    "max_offer_cnt": 40,
+    "max_rank": 350000,
 }
 
 # -----------------------
@@ -326,32 +356,169 @@ for name, preset in PRESETS.items():
         st.session_state.update(preset["weights_core"])
         st.session_state.update(preset["filters"])
 
+# current state for saving/loading/downloading
+current_weights_pillars = {
+    k: st.session_state.get(k, v) for k, v in DEFAULT_WEIGHTS_PILLARS.items()
+}
+current_weights_core = {
+    k: st.session_state.get(k, v) for k, v in DEFAULT_WEIGHTS_CORE.items()
+}
+current_filters = {
+    k: st.session_state.get(k, v) for k, v in DEFAULT_FILTERS.items()
+}
+
+preset_name = st.sidebar.text_input("Preset name", key="preset_name")
+col_save, col_load = st.sidebar.columns(2)
+if col_save.button("Save", use_container_width=True):
+    save_preset(preset_name, current_weights_pillars, current_weights_core, current_filters)
+if col_load.button("Load", use_container_width=True):
+    data = load_preset(preset_name)
+    if data:
+        st.session_state.update(data.get("weights_pillars", {}))
+        st.session_state.update(data.get("weights_core", {}))
+        st.session_state.update(data.get("filters", {}))
+        st.experimental_rerun()
+
+preset_json = json.dumps(
+    {
+        "weights_pillars": current_weights_pillars,
+        "weights_core": current_weights_core,
+        "filters": current_filters,
+    },
+    indent=2,
+)
+st.sidebar.download_button(
+    "Download current preset",
+    preset_json,
+    file_name=f"{preset_name or 'preset'}.json",
+    mime="application/json",
+)
+
+uploaded_preset = st.sidebar.file_uploader("Upload preset", type="json")
+if uploaded_preset is not None:
+    try:
+        data = json.load(uploaded_preset)
+        st.session_state.update(data.get("weights_pillars", {}))
+        st.session_state.update(data.get("weights_core", {}))
+        st.session_state.update(data.get("filters", {}))
+        st.experimental_rerun()
+    except Exception:
+        st.sidebar.error("Invalid preset file")
+
 st.sidebar.subheader("Pesi pilastri (Opportunity 2.0)")
-wP = st.sidebar.slider("Profit", 0, 60, value=st.session_state.get("wP", 40), key="wP")
-wK = st.sidebar.slider("Edge", 0, 40, value=st.session_state.get("wK", 15), key="wK")
-wN = st.sidebar.slider("Demand", 0, 40, value=st.session_state.get("wN", 15), key="wN")
-wX = st.sidebar.slider("Competition", 0, 30, value=st.session_state.get("wX", 10), key="wX")
-wM = st.sidebar.slider("AmazonRisk", 0, 30, value=st.session_state.get("wM", 8), key="wM")
-wL = st.sidebar.slider("Stability", 0, 30, value=st.session_state.get("wL", 7), key="wL")
-wR = st.sidebar.slider("Quality", 0, 30, value=st.session_state.get("wR", 5), key="wR")
+wP = st.sidebar.slider(
+    "Profit", 0, 60, value=st.session_state.get("wP", DEFAULT_WEIGHTS_PILLARS["wP"]), key="wP"
+)
+wK = st.sidebar.slider(
+    "Edge", 0, 40, value=st.session_state.get("wK", DEFAULT_WEIGHTS_PILLARS["wK"]), key="wK"
+)
+wN = st.sidebar.slider(
+    "Demand", 0, 40, value=st.session_state.get("wN", DEFAULT_WEIGHTS_PILLARS["wN"]), key="wN"
+)
+wX = st.sidebar.slider(
+    "Competition", 0, 30, value=st.session_state.get("wX", DEFAULT_WEIGHTS_PILLARS["wX"]), key="wX"
+)
+wM = st.sidebar.slider(
+    "AmazonRisk", 0, 30, value=st.session_state.get("wM", DEFAULT_WEIGHTS_PILLARS["wM"]), key="wM"
+)
+wL = st.sidebar.slider(
+    "Stability", 0, 30, value=st.session_state.get("wL", DEFAULT_WEIGHTS_PILLARS["wL"]), key="wL"
+)
+wR = st.sidebar.slider(
+    "Quality", 0, 30, value=st.session_state.get("wR", DEFAULT_WEIGHTS_PILLARS["wR"]), key="wR"
+)
 weights_pillars = dict(wP=wP, wK=wK, wN=wN, wX=wX, wM=wM, wL=wL, wR=wR)
 
 st.sidebar.subheader("Pesi storici (Core)")
-Epsilon = st.sidebar.slider("Margine % (ε)", 0.0, 5.0, value=st.session_state.get("Epsilon", 3.0), step=0.1, key="Epsilon")
-Theta   = st.sidebar.slider("Margine € (θ)", 0.0, 5.0, value=st.session_state.get("Theta", 1.5), step=0.1, key="Theta")
-Alpha   = st.sidebar.slider("Vendibilità Rank (α)", 0.0, 3.0, value=st.session_state.get("Alpha", 1.0), step=0.1, key="Alpha")
-Beta    = st.sidebar.slider("Domanda recente (β)", 0.0, 3.0, value=st.session_state.get("Beta", 1.0), step=0.1, key="Beta")
-Delta   = st.sidebar.slider("Concorrenza (δ)", 0.0, 3.0, value=st.session_state.get("Delta", 1.0), step=0.1, key="Delta")
-Zeta    = st.sidebar.slider("Trend Rank (ζ)", 0.0, 3.0, value=st.session_state.get("Zeta", 1.0), step=0.1, key="Zeta")
-Gamma   = st.sidebar.slider("Volume stimato (γ)", 0.0, 4.0, value=st.session_state.get("Gamma", 2.0), step=0.1, key="Gamma")
+Epsilon = st.sidebar.slider(
+    "Margine % (ε)",
+    0.0,
+    5.0,
+    value=st.session_state.get("Epsilon", DEFAULT_WEIGHTS_CORE["Epsilon"]),
+    step=0.1,
+    key="Epsilon",
+)
+Theta = st.sidebar.slider(
+    "Margine € (θ)",
+    0.0,
+    5.0,
+    value=st.session_state.get("Theta", DEFAULT_WEIGHTS_CORE["Theta"]),
+    step=0.1,
+    key="Theta",
+)
+Alpha = st.sidebar.slider(
+    "Vendibilità Rank (α)",
+    0.0,
+    3.0,
+    value=st.session_state.get("Alpha", DEFAULT_WEIGHTS_CORE["Alpha"]),
+    step=0.1,
+    key="Alpha",
+)
+Beta = st.sidebar.slider(
+    "Domanda recente (β)",
+    0.0,
+    3.0,
+    value=st.session_state.get("Beta", DEFAULT_WEIGHTS_CORE["Beta"]),
+    step=0.1,
+    key="Beta",
+)
+Delta = st.sidebar.slider(
+    "Concorrenza (δ)",
+    0.0,
+    3.0,
+    value=st.session_state.get("Delta", DEFAULT_WEIGHTS_CORE["Delta"]),
+    step=0.1,
+    key="Delta",
+)
+Zeta = st.sidebar.slider(
+    "Trend Rank (ζ)",
+    0.0,
+    3.0,
+    value=st.session_state.get("Zeta", DEFAULT_WEIGHTS_CORE["Zeta"]),
+    step=0.1,
+    key="Zeta",
+)
+Gamma = st.sidebar.slider(
+    "Volume stimato (γ)",
+    0.0,
+    4.0,
+    value=st.session_state.get("Gamma", DEFAULT_WEIGHTS_CORE["Gamma"]),
+    step=0.1,
+    key="Gamma",
+)
 weights_core = dict(Epsilon=Epsilon, Theta=Theta, Alpha=Alpha, Beta=Beta, Delta=Delta, Zeta=Zeta, Gamma=Gamma)
 
 st.sidebar.subheader("Filtri rapidi")
-min_profit_eur = st.sidebar.number_input("Min Profit Amazon €", value=st.session_state.get("min_profit_eur", 5.0), step=0.5, key="min_profit_eur")
-min_profit_pct = st.sidebar.number_input("Min Profit Amazon %", value=st.session_state.get("min_profit_pct", 15.0), step=1.0, key="min_profit_pct")
-max_amz_share  = st.sidebar.number_input("Max %Amazon BuyBox (90d)", value=st.session_state.get("max_amz_share", 50.0), step=1.0, key="max_amz_share")
-max_offer_cnt  = st.sidebar.number_input("Max Offer Count", value=int(st.session_state.get("max_offer_cnt", 40)), step=1, key="max_offer_cnt")
-max_rank       = st.sidebar.number_input("Max Sales Rank (curr)", value=int(st.session_state.get("max_rank", 350000)), step=5000, key="max_rank")
+min_profit_eur = st.sidebar.number_input(
+    "Min Profit Amazon €",
+    value=st.session_state.get("min_profit_eur", DEFAULT_FILTERS["min_profit_eur"]),
+    step=0.5,
+    key="min_profit_eur",
+)
+min_profit_pct = st.sidebar.number_input(
+    "Min Profit Amazon %",
+    value=st.session_state.get("min_profit_pct", DEFAULT_FILTERS["min_profit_pct"]),
+    step=1.0,
+    key="min_profit_pct",
+)
+max_amz_share = st.sidebar.number_input(
+    "Max %Amazon BuyBox (90d)",
+    value=st.session_state.get("max_amz_share", DEFAULT_FILTERS["max_amz_share"]),
+    step=1.0,
+    key="max_amz_share",
+)
+max_offer_cnt = st.sidebar.number_input(
+    "Max Offer Count",
+    value=int(st.session_state.get("max_offer_cnt", DEFAULT_FILTERS["max_offer_cnt"])),
+    step=1,
+    key="max_offer_cnt",
+)
+max_rank = st.sidebar.number_input(
+    "Max Sales Rank (curr)",
+    value=int(st.session_state.get("max_rank", DEFAULT_FILTERS["max_rank"])),
+    step=5000,
+    key="max_rank",
+)
 
 # -----------------------
 # MAIN
