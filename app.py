@@ -66,6 +66,34 @@ def _badge(value, suffix="€"):
             cls = "badge-profit-neu"; txt = "—"
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
+
+def _missing_columns(df: pd.DataFrame, required: list[str]) -> list[str]:
+    """Return a list of required columns that are absent from *df*."""
+    return [c for c in required if c not in df.columns]
+
+
+def _validate_required_columns(df_orig: pd.DataFrame, df_tgt: pd.DataFrame, required: list[str]) -> None:
+    """Check both datasets for missing columns and report them together.
+
+    Parameters
+    ----------
+    df_orig, df_tgt : pd.DataFrame
+        DataFrames representing the origin and target datasets.
+    required : list[str]
+        Columns that must be present in both datasets.
+    """
+    errors: list[str] = []
+    miss_orig = _missing_columns(df_orig, required)
+    if miss_orig:
+        errors.append(f"Origin dataset: Missing columns: {', '.join(miss_orig)}")
+    miss_tgt = _missing_columns(df_tgt, required)
+    if miss_tgt:
+        errors.append(f"Target dataset: Missing columns: {', '.join(miss_tgt)}")
+    if errors:
+        for err in errors:
+            st.error(err)
+        st.stop()
+
 # -----------------------
 # THEME (dark minimal)
 # -----------------------
@@ -181,16 +209,8 @@ required_columns = ["ASIN", "Locale", origin_price_col, target_price_col]
 
 # Carica e verifica colonne
 df_orig = load_data(orig_file)
-missing = [c for c in required_columns if c not in df_orig.columns]
-if missing:
-    st.error(f"Lista di Origine: mancano le colonne {', '.join(missing)}")
-    st.stop()
-
 df_tgt = load_data(tgt_file)
-missing = [c for c in required_columns if c not in df_tgt.columns]
-if missing:
-    st.error(f"Lista di Confronto: mancano le colonne {', '.join(missing)}")
-    st.stop()
+_validate_required_columns(df_orig, df_tgt, required_columns)
 
 # Left join: partiamo dall'origine (identità/Locale/peso), poi aggiungiamo target
 df = pd.merge(df_orig, df_tgt, on="ASIN", how="left", suffixes=("", " (tgt)"))
