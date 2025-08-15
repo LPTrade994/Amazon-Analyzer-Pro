@@ -17,6 +17,15 @@ This project contains a Streamlit dashboard for analyzing product arbitrage oppo
    ```
 3. In the web interface, upload the origin marketplace file and one or more comparison files to begin analysis.
 
+### Manual end-to-end check
+
+To verify the dashboard manually:
+
+1. Start the application with `streamlit run app.py`.
+2. In the browser, choose an ASIN from the **Dettaglio ASIN** select box.
+3. Expand the panels **Price Regime**, **Competition Map**, **Amazon Risk & Events** and **Quality & Returns**.
+4. Ensure that the badges shown inside each panel display coherent values and styling.
+
 ## Configuration
 
 Provide your Keepa API key and optional password using environment variables or a local `secrets.toml` file. When using environment variables set `API_KEY` (and `PASSWORD` if needed) before running Streamlit:
