@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import pandas as pd
 import numpy as np
+from loaders import parse_float
 
 # ---------------------------
 # Config base & costanti
@@ -112,33 +113,55 @@ def _to_bool_series(s: pd.Series) -> pd.Series:
 # ---------------------------
 
 def calc_final_purchase_price(
-    df: pd.DataFrame,
-    price_col_origin: str,
+    data,
+    price_or_discount,
     origin_locale_col: str = "Locale",
     discount_map: dict[str, float] | None = None,
-) -> pd.Series:
+) -> pd.Series | float:
     """
-    1) Rimozione IVA del paese di ORIGINE
-    2) Applicazione SCONTO (default 21%) — logica invariata; qui settiamo solo il default iniziale.
+    Calcola il prezzo finale di acquisto al netto dell'IVA e dello sconto.
+
+    Può operare sia su un singolo ``dict``/``Series`` (ritornando un float) sia su un
+    ``DataFrame`` (ritornando una Series).  Per il caso ``DataFrame`` il secondo
+    argomento è il nome della colonna del prezzo, mentre per il caso singolo è il
+    valore dello sconto (0–1).
     """
-    if discount_map is None:
-        discount_map = {}
-    default_disc = float(discount_map.get("discount_default_all", 0.21))
 
-    prices = pd.to_numeric(_col(df, price_col_origin), errors="coerce")
-    locales = _col(df, origin_locale_col).astype(str).map(normalize_locale)
+    if isinstance(data, pd.DataFrame):
+        df = data
+        price_col_origin = price_or_discount
+        if discount_map is None:
+            discount_map = {}
+        default_disc = float(discount_map.get("discount_default_all", 0.21))
 
-    out = []
-    for i in df.index:
-        loc = locales.loc[i]
-        vat = VAT_RATES.get(loc, 0.22)
-        base = prices.loc[i]
-        exvat = base / (1.0 + vat) if pd.notna(base) else np.nan
-        disc = float(discount_map.get(loc, default_disc))
-        exvat_disc = exvat * (1.0 - disc) if pd.notna(exvat) else np.nan
-        out.append(exvat_disc)
+        prices = pd.to_numeric(_col(df, price_col_origin), errors="coerce")
+        locales = _col(df, origin_locale_col).astype(str).map(normalize_locale)
 
-    return pd.Series(out, index=df.index, name="PurchaseNetExVAT")
+        out = []
+        for i in df.index:
+            loc = locales.loc[i]
+            vat = VAT_RATES.get(loc, 0.22)
+            base = prices.loc[i]
+            exvat = base / (1.0 + vat) if pd.notna(base) else np.nan
+            disc = float(discount_map.get(loc, default_disc))
+            exvat_disc = exvat * (1.0 - disc) if pd.notna(exvat) else np.nan
+            out.append(exvat_disc)
+
+        return pd.Series(out, index=df.index, name="PurchaseNetExVAT")
+
+    # gestione singolo record (dict o Series)
+    row = data
+    discount = float(price_or_discount)
+    base = parse_float(row.get("Price_Base"), default=np.nan)
+    locale = row.get("Locale (base)") or row.get("Locale")
+    loc_norm = normalize_locale(str(locale))
+    vat = VAT_RATES.get(loc_norm, 0.22)
+    exvat = base / (1.0 + vat) if pd.notna(base) else np.nan
+    if not pd.notna(exvat):
+        return np.nan
+    if loc_norm == "IT":
+        return exvat - base * discount
+    return exvat * (1.0 - discount)
 
 # ---------------------------
 # Profitti Amazon / HDG
@@ -211,6 +234,56 @@ def compute_profits(
     df["SitePriceGross"]  = site_price_series
 
     return df
+
+# ---------------------------
+# Simple scoring helpers
+# ---------------------------
+
+def margin_score(df: pd.DataFrame) -> pd.Series:
+    """Basic margin-based score normalised to 0–1."""
+    margin = pd.to_numeric(_col(df, "Margine_Netto_%", 0.0), errors="coerce")
+    bonus = pd.to_numeric(_col(df, "Trend_Bonus", 0.0), errors="coerce")
+    roi = pd.to_numeric(_col(df, "ROI_Factor", 0.0), errors="coerce")
+    combined = margin.fillna(0) + bonus.fillna(0) + roi.fillna(0)
+    return _norm_percentile(combined)
+
+
+def demand_score(df: pd.DataFrame) -> pd.Series:
+    """Higher score for lower sales rank."""
+    rank = pd.to_numeric(_col(df, "SalesRank_Comp", np.nan), errors="coerce")
+    return (1.0 - _norm_percentile(rank.fillna(rank.median()))).clip(0, 1)
+
+
+def competition_score(df: pd.DataFrame) -> pd.Series:
+    """Higher score when there are fewer competing offers."""
+    offers = pd.to_numeric(_col(df, "NewOffer_Comp", np.nan), errors="coerce")
+    return (1.0 - _norm_percentile(offers.fillna(offers.median()))).clip(0, 1)
+
+
+def volatility_score(df: pd.DataFrame) -> pd.Series:
+    """Score inversely related to price volatility."""
+    vol = pd.to_numeric(_col(df, "PriceVolatility", 0.0), errors="coerce")
+    return (1.0 - _norm_percentile(vol)).clip(0, 1)
+
+
+def risk_score(df: pd.DataFrame) -> pd.Series:
+    """Average of the basic subscores as a placeholder risk metric."""
+    m = margin_score(df)
+    d = demand_score(df)
+    c = competition_score(df)
+    v = volatility_score(df)
+    return ((m + d + c + v) / 4.0).clip(0, 1)
+
+
+def aggregate_opportunities(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate opportunities by ASIN keeping highest score per ASIN."""
+    if df.empty:
+        return df
+    sorted_df = df.sort_values("Opportunity_Score", ascending=False)
+    agg = sorted_df.groupby("ASIN").first().reset_index()
+    if "Locale (comp)" in agg.columns:
+        agg = agg.rename(columns={"Locale (comp)": "Best_Market"})
+    return agg
 
 # ---------------------------
 # Opportunity Score 2.0
