@@ -19,7 +19,7 @@ from score import (
     SHIPPING_COSTS, VAT_RATES, normalize_locale,
     calculate_shipping_cost, calc_final_purchase_price,
     compute_profits, compute_opportunity_score, compute_price_regime,
-    parse_float, parse_int
+    compute_amazon_risk, parse_float, parse_int
 )
 
 # -----------------------
@@ -96,6 +96,21 @@ def _flag_badge(val, txt_ok="No MAP", txt_bad="MAP"):
             cls = "badge-flag-neg"; txt = txt_bad
         else:
             cls = "badge-flag-pos"; txt = txt_ok
+    return f'<span class="badge badge-xl {cls}">{txt}</span>'
+
+
+def _risk_badge(value, threshold, suffix="%"):
+    """Badge per rischi: verde se valore < soglia, rosso se >= soglia."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        cls = "badge-profit-neu"; txt = "—"
+    else:
+        try:
+            v = float(value)
+            disp = f"{round(v, 1)}{suffix}" if suffix else f"{round(v, 1)}"
+            cls = "badge-profit-pos" if v < threshold else "badge-profit-neg"
+            txt = disp
+        except Exception:
+            cls = "badge-profit-neu"; txt = "—"
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
 
@@ -392,6 +407,7 @@ st.markdown(html_table, unsafe_allow_html=True)
 asin_sel = st.selectbox("Dettaglio ASIN", options=df_ess["ASIN"].unique())
 df_sel = dfp[dfp["ASIN"] == asin_sel]
 reg = compute_price_regime(df_sel, target_price_col)
+risk = compute_amazon_risk(df_sel)
 with st.expander("Price Regime"):
     st.write("Media 30g:", _safe(reg.get("BB_MA_30")))
     st.write("Media 90g:", _safe(reg.get("BB_MA_90")))
@@ -412,6 +428,38 @@ with st.expander("Competition Map"):
     st.write("Buy Box: Unqualified:", _safe(row.get("Buy Box: Unqualified")))
     st.markdown(
         "MAP restriction: " + _flag_badge(row.get("MAP restriction")),
+        unsafe_allow_html=True,
+    )
+
+with st.expander("Amazon Risk & Events"):
+    st.markdown(
+        "%Amazon Buy Box 30g: " + _risk_badge(risk.get("BB_AMZ_30"), 50, "%"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "%Amazon Buy Box 90g: " + _risk_badge(risk.get("BB_AMZ_90"), 50, "%"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "%Amazon Buy Box 180g: " + _risk_badge(risk.get("BB_AMZ_180"), 50, "%"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "%Amazon Buy Box 365g: " + _risk_badge(risk.get("BB_AMZ_365"), 50, "%"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "Amazon: OOS Count 90 days: " + _risk_badge(risk.get("AMZ_OOS_90"), 5, ""),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "Amazon: Amazon offer shipping delay: "
+        + _flag_badge(risk.get("AMZ_SHIP_DELAY"), txt_ok="No delay", txt_bad="Delay"),
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        "Lightning Deals: Is Lowest: "
+        + _flag_badge(risk.get("LD_IS_LOWEST"), txt_ok="No", txt_bad="Yes"),
         unsafe_allow_html=True,
     )
 
