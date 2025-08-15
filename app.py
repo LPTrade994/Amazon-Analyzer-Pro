@@ -20,7 +20,8 @@ from score import (
     SHIPPING_COSTS, VAT_RATES, normalize_locale,
     calculate_shipping_cost, calc_final_purchase_price,
     compute_profits, compute_opportunity_score, compute_price_regime,
-    compute_amazon_risk, compute_quality_metrics, parse_float, parse_int
+    compute_amazon_risk, compute_quality_metrics, parse_float, parse_int,
+    DEFAULT_PENALTY_MAP, DEFAULT_PENALTY_THRESHOLD, DEFAULT_PENALTY_SUGGESTED,
 )
 from utils import load_preset, save_preset
 
@@ -488,6 +489,35 @@ Gamma = st.sidebar.slider(
 )
 weights_core = dict(Epsilon=Epsilon, Theta=Theta, Alpha=Alpha, Beta=Beta, Delta=Delta, Zeta=Zeta, Gamma=Gamma)
 
+st.sidebar.subheader("Penalties")
+penalty_map = st.sidebar.slider(
+    "Penalty MAP",
+    0.0,
+    0.3,
+    value=st.session_state.get("penalty_map", DEFAULT_PENALTY_MAP),
+    step=0.01,
+    key="penalty_map",
+    help="Penalty applied when MAP restriction exists.",
+)
+penalty_threshold = st.sidebar.slider(
+    "Penalty Threshold",
+    0.0,
+    0.3,
+    value=st.session_state.get("penalty_threshold", DEFAULT_PENALTY_THRESHOLD),
+    step=0.01,
+    key="penalty_threshold",
+    help="Penalty if price exceeds competitive threshold.",
+)
+penalty_suggested = st.sidebar.slider(
+    "Penalty Suggested",
+    0.0,
+    0.3,
+    value=st.session_state.get("penalty_suggested", DEFAULT_PENALTY_SUGGESTED),
+    step=0.01,
+    key="penalty_suggested",
+    help="Penalty if price exceeds suggested price.",
+)
+
 st.sidebar.subheader("Filtri rapidi")
 min_profit_eur = st.sidebar.number_input(
     "Min Profit Amazon €",
@@ -566,7 +596,14 @@ dfp = compute_profits(
 )
 
 # Opportunity Score
-dfp["OpportunityScore"] = compute_opportunity_score(dfp, weights_pillars, weights_core)
+dfp["OpportunityScore"] = compute_opportunity_score(
+    dfp,
+    weights_pillars,
+    weights_core,
+    penalty_map=penalty_map,
+    penalty_threshold=penalty_threshold,
+    penalty_suggested=penalty_suggested,
+)
 
 # Filtri rapidi
 def _to_pct(x):
