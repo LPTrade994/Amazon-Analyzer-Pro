@@ -780,12 +780,13 @@ st.markdown(badges_html, unsafe_allow_html=True)
 
 df_view = df_view[mask]
 
-csv_view = df_view.to_csv(index=False, sep=";", decimal=",").encode("utf-8")
+csv_view = df_view.to_csv(decimal=",", sep=";", index=False).encode("utf-8")
 st.download_button(
     "📥 Scarica CSV filtrato",
     data=csv_view,
     file_name="dati_filtrati.csv",
     mime="text/csv",
+    help="Il CSV usa la virgola come separatore decimale e il punto e virgola come delimitatore.",
 )
 
 # Vista ESSENZIALE
