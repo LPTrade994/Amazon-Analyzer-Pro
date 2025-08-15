@@ -938,13 +938,13 @@ for _, r in df_ess.iterrows():
     if pd.isna(peso):
         peso = r.get("Item: Weight (g)", np.nan)
 
-row = [
-    r.get("ASIN", ""),
-    r.get("Title", ""),
-    r.get("Brand", ""),
-    r.get("Locale", ""),
-    r.get("Best Market", ""),
-    f"{_safe(r.get('Orig Price'))}",
+    row = [
+        r.get("ASIN", ""),
+        r.get("Title", ""),
+        r.get("Brand", ""),
+        r.get("Locale", ""),
+        r.get("Best Market", ""),
+        f"{_safe(r.get('Orig Price'))}",
         f"{_safe(r.get('PurchaseNetExVAT'))}",
         f"{_safe(peso)}",
         f"{_safe(r.get('BB Target'))}",
