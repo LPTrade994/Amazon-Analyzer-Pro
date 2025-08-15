@@ -263,6 +263,39 @@ def compute_quality_metrics(df: pd.DataFrame) -> pd.Series:
         }
     )
 
+
+def compute_window_signal(df: pd.DataFrame) -> pd.Series:
+    """Generate simple window signals based on risk and price regime data.
+
+    The input *df* is expected to already contain the normalised columns
+    returned by :func:`compute_amazon_risk` (``AMZ_OOS_90``,
+    ``AMZ_SHIP_DELAY``, ``LD_IS_LOWEST``) and by
+    :func:`compute_price_regime` (e.g. ``BB_ZSCORE``).  The rules are
+    intentionally minimal and prioritised as follows:
+
+    1. Shipping delay from Amazon → ``"DELAY"``
+    2. Lightning deal lowest price → ``"LIGHTNING"``
+    3. Amazon out of stock recently *and* positive z-score → ``"SELL"``
+
+    Rows not matching any condition result in an empty string.  The
+    function is vectorised and returns a ``Series`` aligned with ``df``.
+    """
+
+    if df is None or len(df) == 0:
+        return pd.Series([], dtype=object)
+
+    oos = _col(df, "AMZ_OOS_90", 0).map(lambda x: parse_int(x, default=0))
+    zscore = _col(df, "BB_ZSCORE", 0.0).map(lambda x: parse_float(x, default=0.0))
+    delay = _to_bool_series(_col(df, "AMZ_SHIP_DELAY", False))
+    lightning = _to_bool_series(_col(df, "LD_IS_LOWEST", False))
+
+    signal = pd.Series([""] * len(df), index=df.index, dtype=object)
+    signal[delay] = "DELAY"
+    signal[~delay & lightning] = "LIGHTNING"
+    sell_mask = (oos > 0) & (zscore > 0)
+    signal[~delay & ~lightning & sell_mask] = "SELL"
+    return signal
+
 # ---------------------------
 # Logica costo d’acquisto (invariata, default sconto 21%)
 # ---------------------------

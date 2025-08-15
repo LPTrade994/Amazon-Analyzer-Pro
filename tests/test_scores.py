@@ -11,6 +11,7 @@ from score import (
     aggregate_opportunities,
     compute_price_regime,
     compute_quality_metrics,
+    compute_window_signal,
 )
 
 
@@ -89,3 +90,33 @@ def test_compute_quality_metrics():
     assert qm["Return Rate"] == 5.0
     assert qm["Reviews: Rating"] == 4.2
     assert qm["ReviewsMomentum"] == 20
+
+
+def test_compute_window_signal_rules():
+    df = pd.DataFrame(
+        {
+            "AMZ_OOS_90": [1, 0, 0, 1],
+            "AMZ_SHIP_DELAY": [False, True, False, True],
+            "LD_IS_LOWEST": [False, False, True, True],
+            "BB_ZSCORE": [1.2, -0.5, 0.4, 0.3],
+        }
+    )
+    sig = compute_window_signal(df)
+    assert list(sig) == ["SELL", "DELAY", "LIGHTNING", "DELAY"]
+
+
+def test_compute_window_signal_integration_with_profits():
+    df = pd.DataFrame(
+        {
+            "Price_Base": [10.0],
+            "BuyBoxPrice": [15.0],
+            "Locale": ["IT"],
+            "AMZ_OOS_90": [2],
+            "AMZ_SHIP_DELAY": [0],
+            "LD_IS_LOWEST": [0],
+            "BB_ZSCORE": [1.1],
+        }
+    )
+    result = compute_profits(df, "Price_Base", "BuyBoxPrice")
+    result["WindowSignal"] = compute_window_signal(result)
+    assert result["WindowSignal"].iloc[0] == "SELL"

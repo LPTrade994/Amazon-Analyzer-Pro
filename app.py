@@ -29,6 +29,7 @@ from score import (
     recompute_row_profit,
     compute_amazon_risk,
     compute_quality_metrics,
+    compute_window_signal,
     parse_float,
     parse_int,
     DEFAULT_PENALTY_MAP,
@@ -685,6 +686,7 @@ dfp["OpportunityScore"] = compute_opportunity_score(
     penalty_threshold=penalty_threshold,
     penalty_suggested=penalty_suggested,
 )
+dfp["WindowSignal"] = compute_window_signal(dfp)
 
 # Apply manual site price edits from previous interactions
 if "dfp_editor" in st.session_state:
