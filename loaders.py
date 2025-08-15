@@ -4,10 +4,23 @@
 # (La logica di calcolo resta invariata; qui solo utilità.)
 # --------------------------------------------
 from __future__ import annotations
+import pathlib
 import pandas as pd
 import numpy as np
 from io import BytesIO
 from score import parse_float, parse_int, parse_weight
+
+try:
+    import streamlit as st
+except Exception:  # pragma: no cover - streamlit not available
+    class _StreamlitCacheStub:
+        def cache_data(self, *args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
+    st = _StreamlitCacheStub()
 
 
 def _to_bool_series(s: pd.Series) -> pd.Series:
@@ -48,6 +61,36 @@ def _to_bool_series(s: pd.Series) -> pd.Series:
     return s.map(_convert)
 
 def load_data(file, schema: dict[str, str] | None = None) -> pd.DataFrame:
+    """Carica un file tabellare applicando caching sul contenuto.
+
+    Il parametro ``file`` può essere un percorso, un oggetto ``UploadedFile`` di
+    Streamlit o qualunque file-like.  L'implementazione converte il contenuto in
+    ``bytes`` così da consentire a :func:`st.cache_data` di evitare ricarichi
+    inutili quando lo stesso file viene letto più volte.
+    """
+
+    if isinstance(file, (str, pathlib.Path)):
+        path = pathlib.Path(file)
+        data = path.read_bytes()
+        name = path.name
+    else:
+        try:
+            data = file.getvalue()
+        except Exception:
+            data = file.read()
+        name = getattr(file, "name", "")
+
+    return _load_data_cached(data, name, schema)
+
+
+@st.cache_data(show_spinner=False)
+def _load_data_cached(data: bytes, name: str, schema: dict[str, str] | None = None) -> pd.DataFrame:
+    file = BytesIO(data)
+    file.name = name
+    return _load_data_impl(file, schema)
+
+
+def _load_data_impl(file, schema: dict[str, str] | None = None) -> pd.DataFrame:
     name = getattr(file, "name", "").lower()
     if name.endswith(".xlsx") or name.endswith(".xls"):
         df = pd.read_excel(file)
