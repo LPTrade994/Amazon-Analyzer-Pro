@@ -18,7 +18,7 @@ from loaders import load_data, parse_float, parse_int, parse_weight, default_dis
 from score import (
     SHIPPING_COSTS, VAT_RATES, normalize_locale,
     calculate_shipping_cost, calc_final_purchase_price,
-    compute_profits, compute_opportunity_score
+    compute_profits, compute_opportunity_score, compute_price_regime
 )
 
 # -----------------------
@@ -64,6 +64,22 @@ def _badge(value, suffix="€"):
             txt = disp
         except Exception:
             cls = "badge-profit-neu"; txt = "—"
+    return f'<span class="badge badge-xl {cls}">{txt}</span>'
+
+def _z_badge(z):
+    """Badge colorato per z-score: verde ≤ -1, rosso ≥ 1, grigio altrimenti."""
+    try:
+        v = float(z)
+    except Exception:
+        return f'<span class="badge badge-xl badge-profit-neu">—</span>'
+    if np.isnan(v):
+        return f'<span class="badge badge-xl badge-profit-neu">—</span>'
+    cls = "badge-profit-neu"
+    if v <= -1:
+        cls = "badge-profit-pos"
+    elif v >= 1:
+        cls = "badge-profit-neg"
+    txt = f"{v:.2f}"
     return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
 
@@ -352,6 +368,20 @@ html_table = f"""
 </div>
 """
 st.markdown(html_table, unsafe_allow_html=True)
+
+# Dettaglio per ASIN selezionato
+asin_sel = st.selectbox("Dettaglio ASIN", options=df_ess["ASIN"].unique())
+df_sel = dfp[dfp["ASIN"] == asin_sel]
+reg = compute_price_regime(df_sel, target_price_col)
+with st.expander("Price Regime"):
+    st.write("Media 30g:", _safe(reg.get("BB_MA_30")))
+    st.write("Media 90g:", _safe(reg.get("BB_MA_90")))
+    st.write("Media 180g:", _safe(reg.get("BB_MA_180")))
+    st.write("Media 365g:", _safe(reg.get("BB_MA_365")))
+    st.write("Deviazione std:", _safe(reg.get("BB_STD")))
+    st.write("Banda -1σ:", _safe(reg.get("BB_LOWER_1SD")))
+    st.write("Banda +1σ:", _safe(reg.get("BB_UPPER_1SD")))
+    st.markdown("Z-score attuale: " + _z_badge(reg.get("BB_ZSCORE")), unsafe_allow_html=True)
 
 # Pannello avanzato opzionale
 with st.expander("Dettagli avanzati / diagnostica"):

@@ -4,10 +4,12 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import pandas as pd
+import pytest
 from score import (
     compute_profits,
     compute_opportunity_score,
     aggregate_opportunities,
+    compute_price_regime,
 )
 
 
@@ -39,3 +41,17 @@ def test_aggregate_opportunities():
     a1 = agg[agg["ASIN"] == "A1"].iloc[0]
     assert a1["Opportunity_Score"] == 20
     assert a1["Best_Market"] == "FR"
+
+
+def test_compute_price_regime_basic():
+    df = pd.DataFrame({"bb": range(1, 101)})
+    reg = compute_price_regime(df, "bb")
+    assert reg["BB_MA_30"] == pytest.approx(df["bb"].tail(30).mean())
+    assert reg["BB_MA_90"] == pytest.approx(df["bb"].tail(90).mean())
+    assert reg["BB_MA_180"] == pytest.approx(df["bb"].mean())
+    assert reg["BB_MA_365"] == pytest.approx(df["bb"].mean())
+    exp_std = df["bb"].std()
+    assert reg["BB_STD"] == pytest.approx(exp_std)
+    current = df["bb"].iloc[-1]
+    z = (current - reg["BB_MA_365"]) / exp_std
+    assert reg["BB_ZSCORE"] == pytest.approx(z)
