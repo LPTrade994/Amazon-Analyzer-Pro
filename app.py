@@ -21,6 +21,92 @@ from score import (
     compute_profits, compute_opportunity_score, compute_price_regime,
     compute_amazon_risk, compute_quality_metrics, parse_float, parse_int
 )
+from utils import load_preset
+
+# Presets for quick score configurations
+PRESETS = {
+    "Flip veloce": {
+        "weights_pillars": {
+            "wP": 30,
+            "wK": 20,
+            "wN": 20,
+            "wX": 10,
+            "wM": 8,
+            "wL": 7,
+            "wR": 5,
+        },
+        "weights_core": {
+            "Epsilon": 2.0,
+            "Theta": 1.0,
+            "Alpha": 1.5,
+            "Beta": 1.5,
+            "Delta": 1.0,
+            "Zeta": 1.0,
+            "Gamma": 3.0,
+        },
+        "filters": {
+            "min_profit_eur": 3.0,
+            "min_profit_pct": 10.0,
+            "max_amz_share": 50.0,
+            "max_offer_cnt": 40,
+            "max_rank": 350000,
+        },
+    },
+    "Margine alto": {
+        "weights_pillars": {
+            "wP": 60,
+            "wK": 10,
+            "wN": 10,
+            "wX": 5,
+            "wM": 5,
+            "wL": 5,
+            "wR": 5,
+        },
+        "weights_core": {
+            "Epsilon": 4.0,
+            "Theta": 3.0,
+            "Alpha": 1.0,
+            "Beta": 1.0,
+            "Delta": 1.0,
+            "Zeta": 1.0,
+            "Gamma": 1.0,
+        },
+        "filters": {
+            "min_profit_eur": 10.0,
+            "min_profit_pct": 30.0,
+            "max_amz_share": 40.0,
+            "max_offer_cnt": 30,
+            "max_rank": 200000,
+        },
+    },
+    "Volume/Rotazione": {
+        "weights_pillars": {
+            "wP": 35,
+            "wK": 15,
+            "wN": 20,
+            "wX": 10,
+            "wM": 8,
+            "wL": 7,
+            "wR": 5,
+        },
+        "weights_core": {
+            "Epsilon": 1.0,
+            "Theta": 0.5,
+            "Alpha": 1.5,
+            "Beta": 2.0,
+            "Delta": 1.0,
+            "Zeta": 1.0,
+            "Gamma": 4.0,
+        },
+        "filters": {
+            "min_profit_eur": 2.0,
+            "min_profit_pct": 8.0,
+            "max_amz_share": 60.0,
+            "max_offer_cnt": 50,
+            "max_rank": 400000,
+        },
+    },
+}
 
 # -----------------------
 # Helpers di formattazione/HTML
@@ -233,32 +319,39 @@ st.sidebar.subheader("Sconto acquisto (default 21%)")
 disc_default = st.sidebar.slider("Sconto default per tutti i paesi", min_value=0, max_value=60, value=21, step=1) / 100.0
 discount_map = {"discount_default_all": disc_default}
 
+st.sidebar.subheader("Preset")
+for name, preset in PRESETS.items():
+    if st.sidebar.button(name):
+        st.session_state.update(preset["weights_pillars"])
+        st.session_state.update(preset["weights_core"])
+        st.session_state.update(preset["filters"])
+
 st.sidebar.subheader("Pesi pilastri (Opportunity 2.0)")
-wP = st.sidebar.slider("Profit", 0, 60, 40)
-wK = st.sidebar.slider("Edge", 0, 40, 15)
-wN = st.sidebar.slider("Demand", 0, 40, 15)
-wX = st.sidebar.slider("Competition", 0, 30, 10)
-wM = st.sidebar.slider("AmazonRisk", 0, 30, 8)
-wL = st.sidebar.slider("Stability", 0, 30, 7)
-wR = st.sidebar.slider("Quality", 0, 30, 5)
-weights_pillars = dict(wP=wP,wK=wK,wN=wN,wX=wX,wM=wM,wL=wL,wR=wR)
+wP = st.sidebar.slider("Profit", 0, 60, value=st.session_state.get("wP", 40), key="wP")
+wK = st.sidebar.slider("Edge", 0, 40, value=st.session_state.get("wK", 15), key="wK")
+wN = st.sidebar.slider("Demand", 0, 40, value=st.session_state.get("wN", 15), key="wN")
+wX = st.sidebar.slider("Competition", 0, 30, value=st.session_state.get("wX", 10), key="wX")
+wM = st.sidebar.slider("AmazonRisk", 0, 30, value=st.session_state.get("wM", 8), key="wM")
+wL = st.sidebar.slider("Stability", 0, 30, value=st.session_state.get("wL", 7), key="wL")
+wR = st.sidebar.slider("Quality", 0, 30, value=st.session_state.get("wR", 5), key="wR")
+weights_pillars = dict(wP=wP, wK=wK, wN=wN, wX=wX, wM=wM, wL=wL, wR=wR)
 
 st.sidebar.subheader("Pesi storici (Core)")
-Epsilon = st.sidebar.slider("Margine % (ε)", 0.0, 5.0, 3.0, 0.1)
-Theta   = st.sidebar.slider("Margine € (θ)", 0.0, 5.0, 1.5, 0.1)
-Alpha   = st.sidebar.slider("Vendibilità Rank (α)", 0.0, 3.0, 1.0, 0.1)
-Beta    = st.sidebar.slider("Domanda recente (β)", 0.0, 3.0, 1.0, 0.1)
-Delta   = st.sidebar.slider("Concorrenza (δ)", 0.0, 3.0, 1.0, 0.1)
-Zeta    = st.sidebar.slider("Trend Rank (ζ)", 0.0, 3.0, 1.0, 0.1)
-Gamma   = st.sidebar.slider("Volume stimato (γ)", 0.0, 4.0, 2.0, 0.1)
-weights_core = dict(Epsilon=Epsilon,Theta=Theta,Alpha=Alpha,Beta=Beta,Delta=Delta,Zeta=Zeta,Gamma=Gamma)
+Epsilon = st.sidebar.slider("Margine % (ε)", 0.0, 5.0, value=st.session_state.get("Epsilon", 3.0), step=0.1, key="Epsilon")
+Theta   = st.sidebar.slider("Margine € (θ)", 0.0, 5.0, value=st.session_state.get("Theta", 1.5), step=0.1, key="Theta")
+Alpha   = st.sidebar.slider("Vendibilità Rank (α)", 0.0, 3.0, value=st.session_state.get("Alpha", 1.0), step=0.1, key="Alpha")
+Beta    = st.sidebar.slider("Domanda recente (β)", 0.0, 3.0, value=st.session_state.get("Beta", 1.0), step=0.1, key="Beta")
+Delta   = st.sidebar.slider("Concorrenza (δ)", 0.0, 3.0, value=st.session_state.get("Delta", 1.0), step=0.1, key="Delta")
+Zeta    = st.sidebar.slider("Trend Rank (ζ)", 0.0, 3.0, value=st.session_state.get("Zeta", 1.0), step=0.1, key="Zeta")
+Gamma   = st.sidebar.slider("Volume stimato (γ)", 0.0, 4.0, value=st.session_state.get("Gamma", 2.0), step=0.1, key="Gamma")
+weights_core = dict(Epsilon=Epsilon, Theta=Theta, Alpha=Alpha, Beta=Beta, Delta=Delta, Zeta=Zeta, Gamma=Gamma)
 
 st.sidebar.subheader("Filtri rapidi")
-min_profit_eur = st.sidebar.number_input("Min Profit Amazon €", value=5.0, step=0.5)
-min_profit_pct = st.sidebar.number_input("Min Profit Amazon %", value=15.0, step=1.0)
-max_amz_share  = st.sidebar.number_input("Max %Amazon BuyBox (90d)", value=50.0, step=1.0)
-max_offer_cnt  = st.sidebar.number_input("Max Offer Count", value=40, step=1)
-max_rank       = st.sidebar.number_input("Max Sales Rank (curr)", value=350000, step=5000)
+min_profit_eur = st.sidebar.number_input("Min Profit Amazon €", value=st.session_state.get("min_profit_eur", 5.0), step=0.5, key="min_profit_eur")
+min_profit_pct = st.sidebar.number_input("Min Profit Amazon %", value=st.session_state.get("min_profit_pct", 15.0), step=1.0, key="min_profit_pct")
+max_amz_share  = st.sidebar.number_input("Max %Amazon BuyBox (90d)", value=st.session_state.get("max_amz_share", 50.0), step=1.0, key="max_amz_share")
+max_offer_cnt  = st.sidebar.number_input("Max Offer Count", value=int(st.session_state.get("max_offer_cnt", 40)), step=1, key="max_offer_cnt")
+max_rank       = st.sidebar.number_input("Max Sales Rank (curr)", value=int(st.session_state.get("max_rank", 350000)), step=5000, key="max_rank")
 
 # -----------------------
 # MAIN
