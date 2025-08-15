@@ -487,6 +487,17 @@ def compute_profits(
     return df
 
 
+def compute_best_market(df: pd.DataFrame) -> pd.Series:
+    """Return the market code corresponding to the highest OpportunityScore per row."""
+
+    opp_cols = [c for c in df.columns if c.startswith("OpportunityScore")]
+    if not opp_cols:
+        return pd.Series([np.nan] * len(df), index=df.index)
+
+    best = df[opp_cols].idxmax(axis=1)
+    return best.str.replace("OpportunityScore", "").str.replace("^_", "", regex=True)
+
+
 def compute_profits_multi(df: pd.DataFrame, targets: dict[str, str]) -> pd.DataFrame:
     """Calcola profitti e punteggio opportunità per più mercati.
 

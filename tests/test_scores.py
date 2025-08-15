@@ -9,6 +9,7 @@ from score import (
     compute_profits,
     compute_opportunity_score,
     compute_profits_multi,
+    compute_best_market,
     aggregate_opportunities,
     compute_price_regime,
     compute_quality_metrics,
@@ -80,6 +81,17 @@ def test_compute_profits_multi():
 
     assert "OpportunityScore_IT" in result.columns
     assert "OpportunityScore_DE" in result.columns
+
+
+def test_compute_best_market():
+    df = pd.DataFrame(
+        {
+            "OpportunityScore_IT": [10, 5],
+            "OpportunityScore_DE": [8, 7],
+        }
+    )
+    best = compute_best_market(df)
+    assert list(best) == ["IT", "DE"]
 
 
 def test_aggregate_opportunities():

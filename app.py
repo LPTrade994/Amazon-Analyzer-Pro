@@ -26,6 +26,7 @@ from score import (
     compute_profits,
     compute_profits_multi,
     compute_opportunity_score,
+    compute_best_market,
     compute_price_regime,
     recompute_row_profit,
     compute_amazon_risk,
@@ -712,6 +713,8 @@ for loc in selected_markets:
         penalty_suggested=penalty_suggested,
     )
 
+dfp["BestMarket"] = compute_best_market(dfp)
+
 # Rinomina le colonne del mercato principale per compatibilità con la logica esistente
 suffix_main = f"_{locale_target}"
 main_cols = [c for c in dfp.columns if c.endswith(suffix_main)]
@@ -857,6 +860,7 @@ for c in [
     "Title",
     "Brand",
     "Locale",
+    "BestMarket",
     origin_price_col,
     "PurchaseNetExVAT",
     "Package: Weight (g)",
@@ -887,6 +891,7 @@ df_ess = df_view[cols_ess].rename(
         "ProfitAmazonPctView": "Profit Amazon %",
         "ProfitSitePctView": "Profit HDG %",
         "SitePriceGross": "Prezzo HDG",
+        "BestMarket": "Best Market",
     }
 )
 
@@ -902,6 +907,7 @@ header = [
     "Title",
     "Brand",
     "Locale",
+    "Best Market",
     "Orig Price",
     "Costo ex-IVA",
     "Peso (g)",
@@ -932,12 +938,13 @@ for _, r in df_ess.iterrows():
     if pd.isna(peso):
         peso = r.get("Item: Weight (g)", np.nan)
 
-    row = [
-        r.get("ASIN", ""),
-        r.get("Title", ""),
-        r.get("Brand", ""),
-        r.get("Locale", ""),
-        f"{_safe(r.get('Orig Price'))}",
+row = [
+    r.get("ASIN", ""),
+    r.get("Title", ""),
+    r.get("Brand", ""),
+    r.get("Locale", ""),
+    r.get("Best Market", ""),
+    f"{_safe(r.get('Orig Price'))}",
         f"{_safe(r.get('PurchaseNetExVAT'))}",
         f"{_safe(peso)}",
         f"{_safe(r.get('BB Target'))}",
@@ -1062,6 +1069,14 @@ st.markdown(
 # Pannello avanzato opzionale
 with st.expander("Dettagli avanzati / diagnostica"):
     st.write("Prime righe dataset unito (post-calcoli):")
+    opp_cols = dfp.filter(like="OpportunityScore").columns
+
+    def _highlight_best(s):
+        is_best = s == s.max()
+        return ["background-color: #d4edda" if v else "" for v in is_best]
+
+    st.dataframe(dfp.head(50).style.apply(_highlight_best, axis=1, subset=opp_cols))
+
     cols_disable = [c for c in dfp.columns if c != "Prezzo Sito"]
     if st.checkbox("Abilita editor prezzi", key="show_editor"):
         st.data_editor(dfp.head(50).copy(), disabled=cols_disable, key="dfp_editor")
