@@ -9,6 +9,18 @@ import math
 import pandas as pd
 import numpy as np
 
+try:
+    import streamlit as st
+except Exception:  # pragma: no cover - fallback when streamlit not installed
+    class _StreamlitCacheStub:
+        def cache_data(self, *args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
+    st = _StreamlitCacheStub()
+
 
 def parse_float(x, default=None):
     try:
@@ -501,6 +513,10 @@ def compute_best_market(df: pd.DataFrame) -> pd.Series:
 def compute_profits_multi(df: pd.DataFrame, targets: dict[str, str]) -> pd.DataFrame:
     """Calcola profitti e punteggio opportunità per più mercati.
 
+    La funzione funge da wrapper per una versione *cached* interna in modo che
+    ripetute invocazioni con lo stesso ``DataFrame`` e la stessa lista di
+    mercati riutilizzino i risultati precedenti.
+
     Parameters
     ----------
     df:
@@ -518,6 +534,25 @@ def compute_profits_multi(df: pd.DataFrame, targets: dict[str, str]) -> pd.DataF
         ``_<locale>``.
     """
 
+    markets = tuple(sorted(targets.keys()))
+    target_cols = tuple(targets[m] for m in markets)
+    return _compute_profits_multi_cached(df, markets, target_cols)
+
+
+@st.cache_data(show_spinner=False)
+def _compute_profits_multi_cached(
+    df: pd.DataFrame,
+    markets: tuple[str, ...],
+    target_cols: tuple[str, ...],
+) -> pd.DataFrame:
+    """Implementazione cache-aware di :func:`compute_profits_multi`.
+
+    L'output dipende dal ``DataFrame`` di input e dalla lista ordinata dei
+    mercati, usata come chiave di caching insieme ai nomi delle colonne
+    target.
+    """
+
+    targets = dict(zip(markets, target_cols))
     result = df.copy()
     base_cols = set(result.columns)
 
