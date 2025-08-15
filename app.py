@@ -1,6 +1,6 @@
 # app.py
 # ---------------------------------------------------------
-# Amazon Market Analyzer – Upgrade Opportunity Score 2.0
+# Amazon Market Analyzer — Opportunity 2.0
 # UI dark, vista Essenziale, profitti Amazon & HDG, sconto default 21%.
 # ---------------------------------------------------------
 
@@ -20,6 +20,51 @@ from score import (
     calculate_shipping_cost, calc_final_purchase_price,
     compute_profits, compute_opportunity_score
 )
+
+# -----------------------
+# Helpers di formattazione/HTML
+# -----------------------
+
+def _safe(x):
+    """Ritorna stringa formattata o '—' se NaN/None. Numeri con 2 decimali e virgola italiana."""
+    try:
+        if x is None:
+            return "—"
+        if isinstance(x, (int, np.integer)):
+            return f"{int(x)}"
+        if isinstance(x, (float, np.floating)):
+            if np.isnan(x):
+                return "—"
+            return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        # tenta conversione numerica soft
+        xv = pd.to_numeric(pd.Series([x]), errors="coerce").iloc[0]
+        if pd.notna(xv):
+            return _safe(float(xv))
+        return str(x)
+    except Exception:
+        return "—"
+
+def _badge(value, suffix="€"):
+    """Badge XL colorato per profitti."""
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        cls = "badge-profit-neu"; txt = "—"
+    else:
+        try:
+            v = float(value)
+            if suffix == "%":
+                disp = f"{round(v, 1)}{suffix}"
+            else:
+                disp = f"{round(v, 2)}{suffix}"
+            if v > 0.01:
+                cls = "badge-profit-pos"
+            elif v < -0.01:
+                cls = "badge-profit-neg"
+            else:
+                cls = "badge-profit-neu"
+            txt = disp
+        except Exception:
+            cls = "badge-profit-neu"; txt = "—"
+    return f'<span class="badge badge-xl {cls}">{txt}</span>'
 
 # -----------------------
 # THEME (dark minimal)
@@ -48,11 +93,11 @@ div[data-baseweb="select"] * { background: var(--card) !important; color: var(--
 .badge-profit-neg { background: rgba(229,9,20,.12); color: var(--bad); }
 .badge-profit-neu { background: rgba(255,255,255,.1); color: var(--text); }
 .badge-xl { font-size: 0.95rem; }
-.grid-ess { display:grid; grid-template-columns: 1.8fr 1.2fr 1.6fr 1.6fr 1.2fr; gap: 14px; }
 .card { background: var(--card); padding: 14px 16px; border-radius: 16px; border:1px solid #1f1f22; }
 h1,h2,h3,h4 { color: var(--text); }
 hr { border-color:#222227; }
 label, p, span, div { color: var(--text); }
+th { position: sticky; top: 0; background: var(--card); }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -78,7 +123,12 @@ target_price_col = st.sidebar.selectbox("Prezzo Target (Amazon)", options=price_
 st.sidebar.subheader("Parametri vendita")
 use_fba = st.sidebar.toggle("Usa FBA (considera Pick&Pack)", value=False)
 site_price_override = st.sidebar.text_input("Prezzo HDGaming (vuoto = usa BB IT Current)", value="")
-site_price_override_val = parse_float(site_price_override, default=None)
+site_price_override_val = None
+if site_price_override.strip() != "":
+    try:
+        site_price_override_val = float(str(site_price_override).replace(",", "."))
+    except Exception:
+        site_price_override_val = None  # fallback: usa default
 
 st.sidebar.subheader("Sconto acquisto (default 21%)")
 disc_default = st.sidebar.slider("Sconto default per tutti i paesi", min_value=0, max_value=60, value=21, step=1) / 100.0
@@ -118,8 +168,8 @@ st.title("🔎 Amazon Market Analyzer — Opportunity 2.0")
 
 colA, colB, colC = st.columns([1.2,1,1])
 with colA:
-    st.markdown("**Vista Essenziale** — identità + prezzi chiave + profitti Amazon/HDG. \
-Pannelli avanzati disponibili a richiesta.")
+    st.markdown("**Vista Essenziale** — identità + prezzi chiave + profitti Amazon/HDG. "
+                "Pannelli avanzati disponibili a richiesta.")
 with colB:
     st.metric("Sconto default", f"{int(disc_default*100)}%")
 with colC:
@@ -138,19 +188,17 @@ if "ASIN" not in df_orig.columns or "ASIN" not in df_tgt.columns:
     st.error("Assicurati che entrambi i file contengano la colonna **ASIN**.")
     st.stop()
 
-# Preferisci colonne della lista target per prezzi BB target,
-# mantieni identità da origine, poi fai left join sulla target.
-id_cols = [c for c in ["ASIN","Title","Brand","Locale","Package: Weight (g)","Item: Weight (g)"] if c in df_orig.columns]
+# Left join: partiamo dall'origine (identità/Locale/peso), poi aggiungiamo target
 df = pd.merge(df_orig, df_tgt, on="ASIN", how="left", suffixes=("", " (tgt)"))
 
-# Imposta locale target (default IT, modificabile con selectbox se vuoi estendere)
+# Imposta locale target (default IT)
 locale_target = "IT"
 
-# Calcola profitti
+# Calcola profitti (logica IVA/sconto invariata; default sconto = sidebar)
 dfp = compute_profits(
     df,
     price_col_origin=origin_price_col,
-    price_col_target_bb=target_price_col + "",
+    price_col_target_bb=target_price_col,
     locale_target=locale_target,
     locale_origin_col="Locale",
     use_fba=use_fba,
@@ -172,14 +220,14 @@ def _to_pct(x):
 df_view = dfp.copy()
 df_view["ProfitAmazonPctView"] = df_view["ProfitAmazonPct"].map(_to_pct)
 df_view["ProfitSitePctView"] = df_view["ProfitSitePct"].map(_to_pct)
-df_view["BB_AmzShare90d"] = df_view.get("Buy Box: % Amazon 90 days", pd.Series([np.nan]*len(df_view))).astype(float)
+df_view["BB_AmzShare90d"] = pd.to_numeric(dfp.get("Buy Box: % Amazon 90 days", pd.Series([np.nan]*len(dfp))), errors="coerce")
 
 mask = (
-    (df_view["ProfitAmazonEUR"] >= min_profit_eur) &
-    (df_view["ProfitAmazonPctView"] >= min_profit_pct) &
-    ((df_view["BB_AmzShare90d"].fillna(0.0)) <= max_amz_share) &
-    (df_view.get("Total Offer Count", pd.Series([0]*len(df_view))).fillna(0) <= max_offer_cnt) &
-    (df_view.get("Sales Rank: Current", pd.Series([0]*len(df_view))).fillna(0) <= max_rank)
+    (pd.to_numeric(df_view["ProfitAmazonEUR"], errors="coerce").fillna(-9e9) >= float(min_profit_eur)) &
+    (pd.to_numeric(df_view["ProfitAmazonPctView"], errors="coerce").fillna(-9e9) >= float(min_profit_pct)) &
+    (df_view["BB_AmzShare90d"].fillna(0.0) <= float(max_amz_share)) &
+    (pd.to_numeric(df_view.get("Total Offer Count", pd.Series([0]*len(df_view))), errors="coerce").fillna(0) <= int(max_offer_cnt)) &
+    (pd.to_numeric(df_view.get("Sales Rank: Current", pd.Series([0]*len(df_view))), errors="coerce").fillna(0) <= int(max_rank))
 )
 df_view = df_view[mask]
 
@@ -194,6 +242,10 @@ for c in ["ASIN","Title","Brand","Locale",
     if c in df_view.columns:
         cols_ess.append(c)
 
+if len(cols_ess) == 0:
+    st.error("Non sono presenti le colonne attese per la Vista Essenziale.")
+    st.stop()
+
 df_ess = df_view[cols_ess].rename(columns={
     origin_price_col: "Orig Price",
     target_price_col: "BB Target",
@@ -203,31 +255,12 @@ df_ess = df_view[cols_ess].rename(columns={
 })
 
 # Ordinamento per score
-df_ess = df_ess.sort_values(by="OpportunityScore", ascending=False)
+if "OpportunityScore" in df_ess.columns:
+    df_ess = df_ess.sort_values(by="OpportunityScore", ascending=False)
 
-# Render con badge per profitti
-def _badge(v, suffix="€"):
-    if pd.isna(v):
-        cls = "badge-profit-neu"; txt = "—"
-    else:
-        try:
-            val = float(v)
-            if suffix == "%": val = round(val, 1)
-            else: val = round(val, 2)
-            if float(v) > 0.01:
-                cls = "badge-profit-pos"
-            elif float(v) < -0.01:
-                cls = "badge-profit-neg"
-            else:
-                cls = "badge-profit-neu"
-            txt = f"{val}{suffix}"
-        except Exception:
-            cls = "badge-profit-neu"; txt = "—"
-    return f'<span class="badge badge-xl {cls}">{txt}</span>'
-
+# Render tabella HTML con badge
 st.markdown("### 📋 Elenco prodotti (Essenziale)")
-# Costruiamo una tabella HTML elegante per i badge
-table_rows = []
+
 header = [
     "ASIN","Title","Brand","Locale",
     "Orig Price","Costo ex-IVA","Peso (g)",
@@ -235,11 +268,15 @@ header = [
     "Prezzo HDG","Profit HDG €","Profit HDG %",
     "Rank","%Amazon 90d","Return","Score"
 ]
-table_rows.append("<tr>" + "".join([f"<th style='text-align:left;padding:8px 10px'>{h}</th>" for h in header]) + "</tr>")
+
+rows_html = []
+rows_html.append("<tr>" + "".join([f"<th style='text-align:left;padding:8px 10px'>{h}</th>" for h in header]) + "</tr>")
 
 for _, r in df_ess.iterrows():
     peso = r.get("Package: Weight (g)", np.nan)
-    if pd.isna(peso): peso = r.get("Item: Weight (g)", np.nan)
+    if pd.isna(peso):
+        peso = r.get("Item: Weight (g)", np.nan)
+
     row = [
         r.get("ASIN",""),
         r.get("Title",""),
@@ -257,29 +294,19 @@ for _, r in df_ess.iterrows():
         f"{_safe(r.get('Sales Rank: Current'))}",
         f"{_safe(r.get('Buy Box: % Amazon 90 days'))}",
         f"{_safe(r.get('Return Rate'))}",
-        f"{round(float(r.get('OpportunityScore',0)),1)}"
+        f"{_safe(r.get('OpportunityScore'))}",
     ]
-    table_rows.append("<tr>" + "".join([f"<td style='padding:8px 10px'>{cell}</td>" for cell in row]) + "</tr>")
+    rows_html.append("<tr>" + "".join([f"<td style='padding:8px 10px'>{cell}</td>" for cell in row]) + "</tr>")
 
 html_table = f"""
 <div class="card">
-  <div style="overflow:auto;">
+  <div style="overflow:auto; max-height: 70vh;">
     <table style="width:100%;border-collapse:collapse">
-      {''.join(table_rows)}
+      {''.join(rows_html)}
     </table>
   </div>
 </div>
 """
-
-def _safe(x):
-    try:
-        if x is None or (isinstance(x,float) and np.isnan(x)): return "—"
-        if isinstance(x,(int,float)): 
-            return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X",".")
-        return str(x)
-    except Exception:
-        return "—"
-
 st.markdown(html_table, unsafe_allow_html=True)
 
 # Pannello avanzato opzionale
@@ -288,4 +315,4 @@ with st.expander("Dettagli avanzati / diagnostica"):
     st.dataframe(dfp.head(50))
     st.caption("Suggerimento: usa i preset in sidebar per Flip / Margine / Volume.")
 
-st.success("Aggiornamento completato: Opportunity Score 2.0, profitti Amazon/HDG, sconto default 21%, UI Essenziale.")
+st.success("Opportunity Score 2.0, profitti Amazon/HDG, sconto default 21% e Vista Essenziale attivi.")
