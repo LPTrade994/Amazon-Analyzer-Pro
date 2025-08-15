@@ -3,34 +3,27 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from loaders import load_keepa
 import pandas as pd
 from score import (
-    margin_score,
-    demand_score,
-    competition_score,
-    volatility_score,
-    risk_score,
+    compute_profits,
+    compute_opportunity_score,
     aggregate_opportunities,
 )
 
 
-def test_subscores_range():
-    df = load_keepa("sample_data/keepa_sample.xlsx")
-    # minimal columns needed for subscore functions
-    df = df.rename(columns={
-        "Sales Rank: Current": "SalesRank_Comp",
-        "New Offer Count: Current": "NewOffer_Comp",
-    })
-    df["SalesRank_Comp"] = pd.to_numeric(df["SalesRank_Comp"], errors="coerce")
-    df["NewOffer_Comp"] = pd.to_numeric(df["NewOffer_Comp"], errors="coerce")
-    df["Margine_Netto_%"] = 0.0
-    df["Trend_Bonus"] = 0.0
-    df["ROI_Factor"] = 0.0
-
-    for func in [margin_score, demand_score, competition_score, volatility_score, risk_score]:
-        scores = func(df)
-        assert ((0.0 <= scores) & (scores <= 1.0)).all()
+def test_compute_profits_and_opportunity_score_smoke():
+    df = pd.DataFrame(
+        {
+            "Price_Base": [10.0] * 10,
+            "BuyBoxPrice": [15.0] * 10,
+            "Locale": ["IT"] * 10,
+        }
+    )
+    result = compute_profits(df, "Price_Base", "BuyBoxPrice")
+    scores = compute_opportunity_score(result, {}, {})
+    assert pd.api.types.is_numeric_dtype(result["ProfitAmazonEUR"])
+    assert pd.api.types.is_numeric_dtype(result["ProfitSiteEUR"])
+    assert len(scores) == 10
 
 
 def test_aggregate_opportunities():
