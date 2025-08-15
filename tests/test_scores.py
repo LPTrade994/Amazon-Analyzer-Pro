@@ -8,6 +8,7 @@ import pytest
 from score import (
     compute_profits,
     compute_opportunity_score,
+    compute_profits_multi,
     aggregate_opportunities,
     compute_price_regime,
     compute_quality_metrics,
@@ -46,6 +47,39 @@ def test_compute_profits_site_price_column():
         site_price_col="CustomSitePrice",
     )
     assert result["SitePriceGross"].iloc[0] == 20.0
+
+
+def test_compute_profits_multi():
+    df = pd.DataFrame(
+        {
+            "Price_Base": [10.0],
+            "BuyBoxPrice_IT": [15.0],
+            "BuyBoxPrice_DE": [20.0],
+            "Locale": ["IT"],
+        }
+    )
+    targets = {"IT": "BuyBoxPrice_IT", "DE": "BuyBoxPrice_DE"}
+    result = compute_profits_multi(df, targets)
+
+    assert "ProfitAmazonEUR_IT" in result.columns
+    assert "ProfitAmazonEUR_DE" in result.columns
+
+    expected_it = compute_profits(
+        df, "Price_Base", "BuyBoxPrice_IT", locale_target="IT"
+    )
+    expected_de = compute_profits(
+        df, "Price_Base", "BuyBoxPrice_DE", locale_target="DE"
+    )
+
+    assert result["ProfitAmazonEUR_IT"].iloc[0] == pytest.approx(
+        expected_it["ProfitAmazonEUR"].iloc[0]
+    )
+    assert result["ProfitAmazonEUR_DE"].iloc[0] == pytest.approx(
+        expected_de["ProfitAmazonEUR"].iloc[0]
+    )
+
+    assert "OpportunityScore_IT" in result.columns
+    assert "OpportunityScore_DE" in result.columns
 
 
 def test_aggregate_opportunities():

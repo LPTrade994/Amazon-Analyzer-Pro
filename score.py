@@ -42,13 +42,22 @@ def parse_weight(x):
     except Exception:
         return 0
 
+
 # ---------------------------
 # Config base & costanti
 # ---------------------------
 
 VAT_RATES = {
-    "IT": 0.22, "DE": 0.19, "FR": 0.20, "ES": 0.21, "UK": 0.20,
-    "NL": 0.21, "BE": 0.21, "PL": 0.23, "SE": 0.25, "AT": 0.20,
+    "IT": 0.22,
+    "DE": 0.19,
+    "FR": 0.20,
+    "ES": 0.21,
+    "UK": 0.20,
+    "NL": 0.21,
+    "BE": 0.21,
+    "PL": 0.23,
+    "SE": 0.25,
+    "AT": 0.20,
 }
 
 SHIPPING_COSTS = [
@@ -68,6 +77,7 @@ DEFAULT_PENALTY_SUGGESTED = 0.10
 # Utility
 # ---------------------------
 
+
 def normalize_locale(locale: str) -> str:
     if not isinstance(locale, str) or not locale:
         return "IT"
@@ -80,9 +90,15 @@ def normalize_locale(locale: str) -> str:
         return "UK"
     return val[:2]
 
+
 def calculate_shipping_cost(weight_g: float | int) -> float:
     try:
-        w = float(weight_g) if weight_g is not None and not (isinstance(weight_g, float) and math.isnan(weight_g)) else 0.0
+        w = (
+            float(weight_g)
+            if weight_g is not None
+            and not (isinstance(weight_g, float) and math.isnan(weight_g))
+            else 0.0
+        )
     except Exception:
         w = 0.0
     for lo, hi, cost in SHIPPING_COSTS:
@@ -90,25 +106,30 @@ def calculate_shipping_cost(weight_g: float | int) -> float:
             return cost
     return SHIPPING_COSTS[-1][2]
 
+
 def _col(df: pd.DataFrame, name: str, default=0.0) -> pd.Series:
     if name in df.columns:
         s = df[name]
         if isinstance(s, pd.DataFrame):
             s = s.iloc[:, 0]
         return s
-    return pd.Series([default]*len(df), index=df.index)
+    return pd.Series([default] * len(df), index=df.index)
+
 
 def _norm_percentile(series: pd.Series, low=0.05, high=0.95):
     if series is None or len(series) == 0:
         return pd.Series([], dtype=float)
-    s = series.map(lambda x: parse_float(x, default=np.nan)).replace([np.inf, -np.inf], np.nan)
+    s = series.map(lambda x: parse_float(x, default=np.nan)).replace(
+        [np.inf, -np.inf], np.nan
+    )
     fill = np.nanmedian(s) if np.isfinite(np.nanmedian(s)) else 0.0
     s = s.fillna(fill)
     a, b = np.nanquantile(s, low), np.nanquantile(s, high)
     if not np.isfinite(a) or not np.isfinite(b) or a == b:
-        return pd.Series([0.5]*len(s), index=s.index)
+        return pd.Series([0.5] * len(s), index=s.index)
     s = s.clip(a, b)
     return ((s - a) / (b - a)).clip(0.0, 1.0)
+
 
 def _zscore(x: pd.Series, mean: pd.Series, std: pd.Series) -> pd.Series:
     """Z = (x - mean) / std, con gestione std=0 e non finiti."""
@@ -119,6 +140,7 @@ def _zscore(x: pd.Series, mean: pd.Series, std: pd.Series) -> pd.Series:
     z = (x - mean) / std_safe
     z = z.where(np.isfinite(z), 0.0)
     return z
+
 
 def _to_bool_series(s: pd.Series) -> pd.Series:
     """
@@ -137,16 +159,18 @@ def _to_bool_series(s: pd.Series) -> pd.Series:
 
     # gestisci stringhe
     s_str = s.astype(str).str.strip().str.lower()
-    true_vals = {"yes","y","true","1","si","sì","on"}
-    false_vals = {"no","n","false","0","off","", "nan", "none"}
+    true_vals = {"yes", "y", "true", "1", "si", "sì", "on"}
+    false_vals = {"no", "n", "false", "0", "off", "", "nan", "none"}
     out.loc[~mask_num & s_str.isin(true_vals)] = True
     out.loc[~mask_num & s_str.isin(false_vals)] = False
     # il resto rimane False per default
     return out
 
+
 # ---------------------------
 # Price regime helpers
 # ---------------------------
+
 
 def compute_price_regime(df: pd.DataFrame, price_col: str) -> pd.Series:
     """Calcola medie mobili e regime di prezzo per una serie Buy Box.
@@ -224,7 +248,9 @@ def compute_amazon_risk(df: pd.DataFrame) -> pd.Series:
             "BB_AMZ_90": _p("Buy Box: % Amazon 90 days"),
             "BB_AMZ_180": _p("Buy Box: % Amazon 180 days"),
             "BB_AMZ_365": _p("Buy Box: % Amazon 365 days"),
-            "AMZ_OOS_90": parse_int(row.get("Amazon: OOS Count 90 days"), default=np.nan),
+            "AMZ_OOS_90": parse_int(
+                row.get("Amazon: OOS Count 90 days"), default=np.nan
+            ),
             "AMZ_SHIP_DELAY": _b("Amazon: Amazon offer shipping delay"),
             "LD_IS_LOWEST": _b("Lightning Deals: Is Lowest"),
         }
@@ -296,9 +322,11 @@ def compute_window_signal(df: pd.DataFrame) -> pd.Series:
     signal[~delay & ~lightning & sell_mask] = "SELL"
     return signal
 
+
 # ---------------------------
 # Logica costo d’acquisto (invariata, default sconto 21%)
 # ---------------------------
+
 
 def calc_final_purchase_price(
     data,
@@ -322,7 +350,9 @@ def calc_final_purchase_price(
             discount_map = {}
         default_disc = float(discount_map.get("discount_default_all", 0.21))
 
-        prices = _col(df, price_col_origin).map(lambda x: parse_float(x, default=np.nan))
+        prices = _col(df, price_col_origin).map(
+            lambda x: parse_float(x, default=np.nan)
+        )
         locales = _col(df, origin_locale_col).astype(str).map(normalize_locale)
 
         out = []
@@ -351,9 +381,11 @@ def calc_final_purchase_price(
         return exvat - base * discount
     return exvat * (1.0 - discount)
 
+
 # ---------------------------
 # Profitti Amazon / HDG
 # ---------------------------
+
 
 def compute_profits(
     df: pd.DataFrame,
@@ -378,20 +410,34 @@ def compute_profits(
 
     discount_map = {"discount_default_all": default_discount_all}
     df["PurchaseNetExVAT"] = calc_final_purchase_price(
-        df, price_col_origin, origin_locale_col=locale_origin_col, discount_map=discount_map
+        df,
+        price_col_origin,
+        origin_locale_col=locale_origin_col,
+        discount_map=discount_map,
     )
 
     vat_target = VAT_RATES.get(normalize_locale(locale_target), 0.22)
     vat_it = VAT_RATES.get("IT", 0.22)
 
-    sale_gross_amz = _col(df, price_col_target_bb).map(lambda x: parse_float(x, default=np.nan))
+    sale_gross_amz = _col(df, price_col_target_bb).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
 
-    fee_ref_amt = _col(df, "Referral Fee based on current Buy Box price", np.nan).map(lambda x: parse_float(x, default=np.nan))
-    fee_ref_pct = _col(df, "Referral Fee %", 0.0).map(lambda x: parse_float(x, default=np.nan)) / 100.0
+    fee_ref_amt = _col(df, "Referral Fee based on current Buy Box price", np.nan).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
+    fee_ref_pct = (
+        _col(df, "Referral Fee %", 0.0).map(lambda x: parse_float(x, default=np.nan))
+        / 100.0
+    )
     fee_ref_amt = fee_ref_amt.fillna(fee_ref_pct * sale_gross_amz)
 
-    pkg_w = _col(df, "Package: Weight (g)", np.nan).map(lambda x: parse_weight(x) if pd.notna(x) else np.nan)
-    item_w = _col(df, "Item: Weight (g)", np.nan).map(lambda x: parse_weight(x) if pd.notna(x) else np.nan)
+    pkg_w = _col(df, "Package: Weight (g)", np.nan).map(
+        lambda x: parse_weight(x) if pd.notna(x) else np.nan
+    )
+    item_w = _col(df, "Item: Weight (g)", np.nan).map(
+        lambda x: parse_weight(x) if pd.notna(x) else np.nan
+    )
     weights = pkg_w.fillna(item_w).fillna(0.0)
     ship_fbm = weights.map(calculate_shipping_cost)
 
@@ -400,7 +446,7 @@ def compute_profits(
         if use_fba
         else pd.Series([0.0] * len(df), index=df.index)
     )
-    ship_out_eff = pd.Series([0.0]*len(df), index=df.index) if use_fba else ship_fbm
+    ship_out_eff = pd.Series([0.0] * len(df), index=df.index) if use_fba else ship_fbm
 
     proceeds_gross_amz = sale_gross_amz - fee_ref_amt - pick_pack - ship_out_eff
     proceeds_exvat_amz = proceeds_gross_amz / (1.0 + vat_target)
@@ -414,9 +460,9 @@ def compute_profits(
             lambda x: parse_float(x, default=np.nan)
         )
     else:
-        default_site_price = _col(
-            df, "Buy Box 🚚: Current", np.nan
-        ).map(lambda x: parse_float(x, default=np.nan))
+        default_site_price = _col(df, "Buy Box 🚚: Current", np.nan).map(
+            lambda x: parse_float(x, default=np.nan)
+        )
         site_price_series = (
             pd.Series([site_price] * len(df), index=df.index)
             if site_price is not None
@@ -432,13 +478,51 @@ def compute_profits(
 
     df["ProfitAmazonEUR"] = profit_amz_eur
     df["ProfitAmazonPct"] = profit_amz_pct
-    df["ProfitSiteEUR"]   = profit_site_eur
-    df["ProfitSitePct"]   = profit_site_pct
+    df["ProfitSiteEUR"] = profit_site_eur
+    df["ProfitSitePct"] = profit_site_pct
     df["ShipOut_FBMCost"] = ship_fbm
     df["SaleGrossAmazon"] = sale_gross_amz
-    df["SitePriceGross"]  = site_price_series
+    df["SitePriceGross"] = site_price_series
 
     return df
+
+
+def compute_profits_multi(df: pd.DataFrame, targets: dict[str, str]) -> pd.DataFrame:
+    """Calcola profitti e punteggio opportunità per più mercati.
+
+    Parameters
+    ----------
+    df:
+        DataFrame di input contenente almeno le colonne ``Price_Base`` e le
+        colonne di prezzo Buy Box per i vari mercati.
+    targets:
+        Mappa ``locale -> colonna Buy Box`` da utilizzare per il calcolo dei
+        profitti per ciascun mercato.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame originale arricchito con le colonne di profitto e
+        ``OpportunityScore`` per ogni mercato, rinominate con suffisso
+        ``_<locale>``.
+    """
+
+    result = df.copy()
+    base_cols = set(result.columns)
+
+    for locale_target, price_col in targets.items():
+        df_loc = compute_profits(
+            df,
+            price_col_origin="Price_Base",
+            price_col_target_bb=price_col,
+            locale_target=locale_target,
+        )
+        df_loc["OpportunityScore"] = compute_opportunity_score(df_loc, {}, {})
+
+        new_cols = [c for c in df_loc.columns if c not in base_cols]
+        result = result.join(df_loc[new_cols].add_suffix(f"_{locale_target}"))
+
+    return result
 
 
 def recompute_row_profit(
@@ -471,13 +555,17 @@ def recompute_row_profit(
     df_single["OpportunityScore"] = compute_opportunity_score(df_single, {}, {})
     return df_single.iloc[0]
 
+
 # ---------------------------
 # Simple scoring helpers
 # ---------------------------
 
+
 def margin_score(df: pd.DataFrame) -> pd.Series:
     """Basic margin-based score normalised to 0–1."""
-    margin = _col(df, "Margine_Netto_%", 0.0).map(lambda x: parse_float(x, default=np.nan))
+    margin = _col(df, "Margine_Netto_%", 0.0).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
     bonus = _col(df, "Trend_Bonus", 0.0).map(lambda x: parse_float(x, default=np.nan))
     roi = _col(df, "ROI_Factor", 0.0).map(lambda x: parse_float(x, default=np.nan))
     combined = margin.fillna(0) + bonus.fillna(0) + roi.fillna(0)
@@ -486,13 +574,17 @@ def margin_score(df: pd.DataFrame) -> pd.Series:
 
 def demand_score(df: pd.DataFrame) -> pd.Series:
     """Higher score for lower sales rank."""
-    rank = _col(df, "SalesRank_Comp", np.nan).map(lambda x: parse_int(x, default=np.nan))
+    rank = _col(df, "SalesRank_Comp", np.nan).map(
+        lambda x: parse_int(x, default=np.nan)
+    )
     return (1.0 - _norm_percentile(rank.fillna(rank.median()))).clip(0, 1)
 
 
 def competition_score(df: pd.DataFrame) -> pd.Series:
     """Higher score when there are fewer competing offers."""
-    offers = _col(df, "NewOffer_Comp", np.nan).map(lambda x: parse_int(x, default=np.nan))
+    offers = _col(df, "NewOffer_Comp", np.nan).map(
+        lambda x: parse_int(x, default=np.nan)
+    )
     return (1.0 - _norm_percentile(offers.fillna(offers.median()))).clip(0, 1)
 
 
@@ -521,9 +613,11 @@ def aggregate_opportunities(df: pd.DataFrame) -> pd.DataFrame:
         agg = agg.rename(columns={"Locale (comp)": "Best_Market"})
     return agg
 
+
 # ---------------------------
 # Opportunity Score 2.0
 # ---------------------------
+
 
 def compute_opportunity_score(
     df: pd.DataFrame,
@@ -541,10 +635,14 @@ def compute_opportunity_score(
     """
     # ------ Profit component (Epsilon/Theta) ------
     nz_profit_pct = _norm_percentile(
-        _col(df, "ProfitAmazonPct", 0.0).map(lambda x: parse_float(x, default=np.nan)).fillna(0.0)
+        _col(df, "ProfitAmazonPct", 0.0)
+        .map(lambda x: parse_float(x, default=np.nan))
+        .fillna(0.0)
     )
     nz_profit_eur = _norm_percentile(
-        _col(df, "ProfitAmazonEUR", 0.0).map(lambda x: parse_float(x, default=np.nan)).fillna(0.0)
+        _col(df, "ProfitAmazonEUR", 0.0)
+        .map(lambda x: parse_float(x, default=np.nan))
+        .fillna(0.0)
     )
     eps = float(weights_core.get("Epsilon", 3.0))
     the = float(weights_core.get("Theta", 1.5))
@@ -553,9 +651,15 @@ def compute_opportunity_score(
     profit_component = profit_component.clip(0, 1)
 
     # ------ Kappa (MarketEdge) ------
-    bb_cur   = _col(df, "SaleGrossAmazon", 0.0).map(lambda x: parse_float(x, default=np.nan))
-    bb90_tgt = _col(df, "Buy Box 🚚: 90 days avg.", bb_cur).map(lambda x: parse_float(x, default=np.nan))
-    sd90_tgt = _col(df, "Buy Box: Standard Deviation 90 days", 0.0).map(lambda x: parse_float(x, default=np.nan))
+    bb_cur = _col(df, "SaleGrossAmazon", 0.0).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
+    bb90_tgt = _col(df, "Buy Box 🚚: 90 days avg.", bb_cur).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
+    sd90_tgt = _col(df, "Buy Box: Standard Deviation 90 days", 0.0).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
     sd90_tgt = sd90_tgt.where(sd90_tgt.abs() > 1e-9, np.nan)
 
     z_sell_raw = _zscore(bb_cur, bb90_tgt, sd90_tgt)
@@ -563,10 +667,16 @@ def compute_opportunity_score(
 
     origin_locale = _col(df, "Locale", "IT").astype(str).map(normalize_locale)
     vat_origin_series = origin_locale.map(lambda c: VAT_RATES.get(c, 0.22))
-    buy_gross_proxy = _col(df, "PurchaseNetExVAT", 0.0).map(lambda x: parse_float(x, default=np.nan)) * (1.0 + vat_origin_series)
+    buy_gross_proxy = _col(df, "PurchaseNetExVAT", 0.0).map(
+        lambda x: parse_float(x, default=np.nan)
+    ) * (1.0 + vat_origin_series)
 
-    bb90_orig = _col(df, "Buy Box 🚚: 90 days avg. (origine)", bb90_tgt).map(lambda x: parse_float(x, default=np.nan))
-    sd90_orig = _col(df, "Buy Box: Standard Deviation 90 days (origine)", sd90_tgt).map(lambda x: parse_float(x, default=np.nan))
+    bb90_orig = _col(df, "Buy Box 🚚: 90 days avg. (origine)", bb90_tgt).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
+    sd90_orig = _col(df, "Buy Box: Standard Deviation 90 days (origine)", sd90_tgt).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
     sd90_orig = sd90_orig.where(sd90_orig.abs() > 1e-9, np.nan)
 
     z_buy_raw = _zscore(buy_gross_proxy, bb90_orig, sd90_orig)
@@ -574,49 +684,117 @@ def compute_opportunity_score(
 
     edge_base = (z_sell + (1.0 - z_buy)) / 2.0  # 0–1
 
-    thr = _col(df, "Competitive Price Threshold", np.nan).map(lambda x: parse_float(x, default=np.nan))
-    sug = _col(df, "Suggested Lower Price", np.nan).map(lambda x: parse_float(x, default=np.nan))
+    thr = _col(df, "Competitive Price Threshold", np.nan).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
+    sug = _col(df, "Suggested Lower Price", np.nan).map(
+        lambda x: parse_float(x, default=np.nan)
+    )
     pen_thr = _to_bool_series(bb_cur > thr).astype(float) * penalty_threshold
     pen_sug = _to_bool_series(bb_cur > sug).astype(float) * penalty_suggested
 
     kappa = (edge_base - pen_thr - pen_sug).clip(0, 1)
 
     # ------ Nu (DemandMomentum) ------
-    rank_curr = _col(df, "Sales Rank: Current", np.nan).map(lambda x: parse_int(x, default=np.nan))
+    rank_curr = _col(df, "Sales Rank: Current", np.nan).map(
+        lambda x: parse_int(x, default=np.nan)
+    )
     rank_score = 1.0 - _norm_percentile(rank_curr.fillna(np.nanmedian(rank_curr)))
-    drops90 = _norm_percentile(_col(df, "Sales Rank: Drops last 90 days", 0.0).map(lambda x: parse_int(x, default=np.nan)))
-    bpm     = _norm_percentile(_col(df, "Bought in past month", 0.0).map(lambda x: parse_int(x, default=np.nan)))
-    chg90   = _norm_percentile(_col(df, "90 days change % monthly sold", 0.0).map(lambda x: parse_float(x, default=np.nan)))
-    zeta    = float(weights_core.get("Zeta", 1.0))
-    nu = (0.40*rank_score + 0.25*drops90 + 0.20*bpm + 0.15*chg90 + 0.05*(zeta/3.0)).clip(0,1)
+    drops90 = _norm_percentile(
+        _col(df, "Sales Rank: Drops last 90 days", 0.0).map(
+            lambda x: parse_int(x, default=np.nan)
+        )
+    )
+    bpm = _norm_percentile(
+        _col(df, "Bought in past month", 0.0).map(
+            lambda x: parse_int(x, default=np.nan)
+        )
+    )
+    chg90 = _norm_percentile(
+        _col(df, "90 days change % monthly sold", 0.0).map(
+            lambda x: parse_float(x, default=np.nan)
+        )
+    )
+    zeta = float(weights_core.get("Zeta", 1.0))
+    nu = (
+        0.40 * rank_score
+        + 0.25 * drops90
+        + 0.20 * bpm
+        + 0.15 * chg90
+        + 0.05 * (zeta / 3.0)
+    ).clip(0, 1)
 
     # ------ Xi (CompetitionPressure) ------
-    offer   = _norm_percentile(_col(df, "Total Offer Count", 0.0).map(lambda x: parse_int(x, default=np.nan)))
-    winner  = 1.0 - _norm_percentile(_col(df, "Buy Box: Winner Count 90 days", 0.0).map(lambda x: parse_int(x, default=np.nan)))
-    unqual  = _norm_percentile(_col(df, "Buy Box: Unqualified", 0.0).map(lambda x: parse_int(x, default=np.nan)))
-    map_pen = _to_bool_series(_col(df, "MAP restriction", False)).astype(float) * penalty_map
-    xi = (1.0 - (0.5*offer + 0.3*winner) + 0.2*unqual - map_pen).clip(0,1)
+    offer = _norm_percentile(
+        _col(df, "Total Offer Count", 0.0).map(lambda x: parse_int(x, default=np.nan))
+    )
+    winner = 1.0 - _norm_percentile(
+        _col(df, "Buy Box: Winner Count 90 days", 0.0).map(
+            lambda x: parse_int(x, default=np.nan)
+        )
+    )
+    unqual = _norm_percentile(
+        _col(df, "Buy Box: Unqualified", 0.0).map(
+            lambda x: parse_int(x, default=np.nan)
+        )
+    )
+    map_pen = (
+        _to_bool_series(_col(df, "MAP restriction", False)).astype(float) * penalty_map
+    )
+    xi = (1.0 - (0.5 * offer + 0.3 * winner) + 0.2 * unqual - map_pen).clip(0, 1)
 
     # ------ Mu (AmazonRisk) ------
-    p_amz = _norm_percentile(_col(df, "Buy Box: % Amazon 90 days", 0.0).map(lambda x: parse_float(x, default=np.nan)))
-    oos   = _norm_percentile(_col(df, "Amazon: OOS Count 90 days", 0.0).map(lambda x: parse_int(x, default=np.nan)))
-    delay_presence = _to_bool_series(_col(df, "Amazon: Amazon offer shipping delay", np.nan)).astype(float) * 0.1
-    mu = (1.0 - 0.8*p_amz + 0.3*oos + delay_presence).clip(0,1)
+    p_amz = _norm_percentile(
+        _col(df, "Buy Box: % Amazon 90 days", 0.0).map(
+            lambda x: parse_float(x, default=np.nan)
+        )
+    )
+    oos = _norm_percentile(
+        _col(df, "Amazon: OOS Count 90 days", 0.0).map(
+            lambda x: parse_int(x, default=np.nan)
+        )
+    )
+    delay_presence = (
+        _to_bool_series(_col(df, "Amazon: Amazon offer shipping delay", np.nan)).astype(
+            float
+        )
+        * 0.1
+    )
+    mu = (1.0 - 0.8 * p_amz + 0.3 * oos + delay_presence).clip(0, 1)
 
     # ------ Lambda (PriceStability) ------
-    sd90_for_stab = _norm_percentile(_col(df, "Buy Box: Standard Deviation 90 days", 0.0).map(lambda x: parse_float(x, default=np.nan)))
-    flp           = _norm_percentile(_col(df, "Buy Box: Flipability 90 days", 0.0).map(lambda x: parse_float(x, default=np.nan)))
-    lamb = (1.0 - 0.7*sd90_for_stab + 0.5*flp).clip(0,1)
+    sd90_for_stab = _norm_percentile(
+        _col(df, "Buy Box: Standard Deviation 90 days", 0.0).map(
+            lambda x: parse_float(x, default=np.nan)
+        )
+    )
+    flp = _norm_percentile(
+        _col(df, "Buy Box: Flipability 90 days", 0.0).map(
+            lambda x: parse_float(x, default=np.nan)
+        )
+    )
+    lamb = (1.0 - 0.7 * sd90_for_stab + 0.5 * flp).clip(0, 1)
 
     # ------ Rho (QualityRisk) ------
-    ret   = 1.0 - _norm_percentile(_col(df, "Return Rate", 0.0).map(lambda x: parse_float(x, default=np.nan)))
-    rate  = _norm_percentile(_col(df, "Reviews: Rating", 0.0).map(lambda x: parse_float(x, default=np.nan)))
-    rc_g  = _norm_percentile(
-        _col(df, "Reviews: Rating Count", 0.0).map(lambda x: parse_int(x, default=np.nan)) -
-        _col(df, "Reviews: Rating Count - 90 days avg.", 0.0).map(lambda x: parse_int(x, default=np.nan))
+    ret = 1.0 - _norm_percentile(
+        _col(df, "Return Rate", 0.0).map(lambda x: parse_float(x, default=np.nan))
     )
-    deal_pen = _to_bool_series(_col(df, "Lightning Deals: Is Lowest", False)).astype(float) * 0.1
-    rho = (0.5*ret + 0.3*rate + 0.2*rc_g - deal_pen).clip(0,1)
+    rate = _norm_percentile(
+        _col(df, "Reviews: Rating", 0.0).map(lambda x: parse_float(x, default=np.nan))
+    )
+    rc_g = _norm_percentile(
+        _col(df, "Reviews: Rating Count", 0.0).map(
+            lambda x: parse_int(x, default=np.nan)
+        )
+        - _col(df, "Reviews: Rating Count - 90 days avg.", 0.0).map(
+            lambda x: parse_int(x, default=np.nan)
+        )
+    )
+    deal_pen = (
+        _to_bool_series(_col(df, "Lightning Deals: Is Lowest", False)).astype(float)
+        * 0.1
+    )
+    rho = (0.5 * ret + 0.3 * rate + 0.2 * rc_g - deal_pen).clip(0, 1)
 
     # ------ Pesatura pilastri ------
     wP = float(weights_pillars.get("wP", 40))
@@ -626,7 +804,15 @@ def compute_opportunity_score(
     wM = float(weights_pillars.get("wM", 8))
     wL = float(weights_pillars.get("wL", 7))
     wR = float(weights_pillars.get("wR", 5))
-    total_w = max(1.0, wP+wK+wN+wX+wM+wL+wR)
+    total_w = max(1.0, wP + wK + wN + wX + wM + wL + wR)
 
-    score = (wP*profit_component + wK*kappa + wN*nu + wX*xi + wM*mu + wL*lamb + wR*rho) * (100.0/total_w)
-    return score.clip(0,100)
+    score = (
+        wP * profit_component
+        + wK * kappa
+        + wN * nu
+        + wX * xi
+        + wM * mu
+        + wL * lamb
+        + wR * rho
+    ) * (100.0 / total_w)
+    return score.clip(0, 100)
