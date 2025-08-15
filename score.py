@@ -103,8 +103,8 @@ def _norm_percentile(series: pd.Series, low=0.05, high=0.95):
     a, b = np.nanquantile(s, low), np.nanquantile(s, high)
     if not np.isfinite(a) or not np.isfinite(b) or a == b:
         return pd.Series([0.5]*len(s), index=s.index)
-    out = (s - a) / (b - a)
-    return out.clip(0.0, 1.0)
+    s = s.clip(a, b)
+    return ((s - a) / (b - a)).clip(0.0, 1.0)
 
 def _zscore(x: pd.Series, mean: pd.Series, std: pd.Series) -> pd.Series:
     """Z = (x - mean) / std, con gestione std=0 e non finiti."""
