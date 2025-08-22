@@ -1,0 +1,4 @@
+"ASIN","Title","Best Route","Purchase Price €","ROI %","Opportunity Score","exported_at","export_version"
+"B0D23VW9VB","Product with, comma and """"quotes""""","IT->DE","15.99","25.5%","85.0","2025-08-21 13:32:55","1.0"
+"B0D24ABC123","Another product with <HTML> tags","INVALID_ROUTE","22.5","18.2","65.2","2025-08-21 13:32:55","1.0"
+"B0D25XYZ789","Product with newline and tab characters","FR->ES","8.75","42.8","45.7","2025-08-21 13:32:55","1.0"

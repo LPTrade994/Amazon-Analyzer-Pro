@@ -1,0 +1,6 @@
+ASIN,Title,Buy Box 🚚: Current,Amazon: Current,New FBA: Current,New FBM: Current,Buy Box 🚚: 30 days avg.,Buy Box 🚚: 90 days avg.,Buy Box 🚚: 180 days avg.,Buy Box 🚚: Lowest,Buy Box 🚚: Highest,Sales Rank: Current,Reviews Rating,Buy Box: % Amazon 90 days,Buy Box: Winner Count,Buy Box: 90 days OOS,Offers: Count,Prime Eligible,Referral Fee %,FBA Pick&Pack Fee,detected_locale
+B001TEST01,Test Product Italia 200 EUR 21% Discount,200.00,195.00,205.00,199.00,220.00,210.00,225.00,180.00,250.00,50000,4.2,75,3,5,8,True,0.15,2.00,it
+B001TEST02,Test Product Germania 200 EUR 21% Discount,200.00,198.00,202.00,201.00,215.00,205.00,220.00,185.00,240.00,45000,4.0,65,4,8,10,True,0.15,2.20,de
+B001TEST03,Test Product Francia 150 EUR 15% Discount,150.00,148.00,152.00,149.00,160.00,155.00,165.00,140.00,180.00,30000,4.5,80,2,3,5,True,0.12,1.80,fr
+B001TEST04,Test Product Spagna 100 EUR 25% Discount,100.00,99.00,101.00,98.00,110.00,105.00,115.00,95.00,125.00,75000,3.8,70,5,12,15,False,0.18,2.50,es
+B001TEST05,Test Low Price Product Italia,25.00,24.50,26.00,25.50,27.00,26.50,28.00,22.00,30.00,100000,4.1,85,2,2,3,True,0.15,1.50,it

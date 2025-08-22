@@ -1,0 +1,4 @@
+﻿source_market;target_market;asin;title;route;exported_at;export_version
+es;it;B0D23VW9VB;Cross-Market Product ES->IT;ES->IT;2025-08-21 16:15:18;1.0
+de;fr;B0D24ABC123;"Product with, comma and """"quotes""""";DE->FR;2025-08-21 16:15:18;1.0
+it;es;B0D25XYZ789;Another cross-market product;IT->ES;2025-08-21 16:15:18;1.0
