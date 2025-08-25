@@ -114,21 +114,22 @@ def select_target_price(row: pd.Series, target_locale: str, scenario: str) -> fl
     if base_price <= 0:
         return 0.0
     
-    # Apply scenario adjustments - updated for Short/Medium/Long
-    scenario_multipliers = {
-        'Short': 0.95,    # Quick turnover, lower price
-        'Medium': 1.0,    # Balanced approach
-        'Long': 1.05,     # Patient approach, higher price
-        # Keep old ones for compatibility
-        'conservative': 0.95,
-        'current': 1.0,
-        'aggressive': 1.05
-    }
+    # Apply scenario adjustment
+    price = base_price
+    if price > 0:
+        if scenario.lower() == 'short':
+            price = price * 0.95  # -5% for quick turnover
+        elif scenario.lower() == 'long':
+            price = price * 1.05  # +5% for patient approach
+        # 'medium' or 'current' = no adjustment
+        
+        # Keep compatibility with old scenario names
+        elif scenario.lower() == 'conservative':
+            price = price * 0.95
+        elif scenario.lower() == 'aggressive':
+            price = price * 1.05
     
-    multiplier = scenario_multipliers.get(scenario, 1.0)
-    target_price = base_price * multiplier
-    
-    return max(target_price, 0.0)
+    return max(price, 0.0)
 
 
 def calculate_profit_metrics(row: pd.Series, purchase_strategy: str, target_locale: str, 

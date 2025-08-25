@@ -430,3 +430,78 @@ def calculate_enhanced_score(row, weights):
             'quality': max(0.0, min(100.0, quality_score))
         }
     }
+
+
+def buybox_predictability_score(row: pd.Series) -> float:
+    """
+    Calcola quanto è prevedibile/stabile il Buy Box
+    Score alto = facile da vincere e mantenere
+    
+    Args:
+        row: Pandas Series con i dati del prodotto
+        
+    Returns:
+        float: Score 0-100 per prevedibilità Buy Box
+    """
+    
+    score = 50.0  # Base
+    
+    try:
+        # 1. Pochi winner = più facile
+        winner_count = safe_numeric(row.get('Buy Box: Winner Count 30 days', 
+                                           row.get('Buy Box: Winner Count', 10)))
+        if winner_count < 3:
+            score += 20
+        elif winner_count < 5:
+            score += 10
+        elif winner_count > 10:
+            score -= 10
+        
+        # 2. Bassa deviazione standard = prezzi stabili
+        std_dev = safe_numeric(row.get('Buy Box: Standard Deviation 30 days', 0))
+        avg_price = safe_numeric(row.get('Buy Box 🚚: 30 days avg.', 
+                                        row.get('Buy Box 🚚: Current', 1)))
+        if avg_price > 0:
+            cv = std_dev / avg_price  # Coefficient of variation
+            if cv < 0.05:  # <5% variation
+                score += 15
+            elif cv < 0.10:
+                score += 5
+            elif cv > 0.20:
+                score -= 10
+        
+        # 3. Amazon non dominante
+        amazon_pct = safe_numeric(row.get('Buy Box: % Amazon 365 days', 
+                                         row.get('Buy Box: % Amazon 90 days', 50)))
+        if amazon_pct < 10:
+            score += 15
+        elif amazon_pct < 30:
+            score += 5
+        elif amazon_pct > 70:
+            score -= 20
+        
+        # 4. Flipability score (da Keepa)
+        flipability = safe_numeric(row.get('Buy Box: Flipability 365 days', 50))
+        if pd.notna(flipability) and flipability != 50:  # Se abbiamo dato reale
+            score += (flipability - 50) / 2  # -25 to +25 adjustment
+        
+        # 5. Stabilità storica dei prezzi (bonus)
+        # Se abbiamo anche dati su 90 giorni, confrontiamo la variabilità
+        std_dev_90 = safe_numeric(row.get('Buy Box: Standard Deviation 90 days', 0))
+        if std_dev_90 > 0 and std_dev > 0:
+            # Se la deviazione a 30 giorni è minore di quella a 90, è un buon segno
+            if std_dev < std_dev_90 * 0.8:
+                score += 5  # Trend di stabilizzazione
+        
+        # 6. Out of Stock percentage (meno OOS = più prevedibile)
+        oos_pct = safe_numeric(row.get('Buy Box: 90 days OOS', 0))
+        if oos_pct < 5:
+            score += 5
+        elif oos_pct > 20:
+            score -= 10
+    
+    except Exception as e:
+        # In caso di errore, torna a score base
+        score = 50.0
+    
+    return max(0.0, min(100.0, score))

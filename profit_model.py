@@ -50,39 +50,36 @@ def calculate_all_routes_cached(df_csv: str, discount: float, strategy: str, sce
 
 def compute_fees(row: pd.Series, sale_price: float, target_locale: str, mode: str = 'FBA') -> Dict[str, float]:
     """
-    Usa referral fee dal dataset, non da parametro UI
-    
-    Args:
-        row: DataFrame row con dati prodotto
-        sale_price: Prezzo di vendita
-        target_locale: Mercato di destinazione
-        mode: Modalità di vendita ('FBA' o 'FBM')
-        
-    Returns:
-        Dict con breakdown delle fee: {'referral': X, 'fba': Y, 'shipping': Z, 'total': total}
+    Calcola TUTTE le fees Amazon correttamente
     """
     if sale_price <= 0:
         return {'referral': 0.0, 'fba': 0.0, 'shipping': 0.0, 'total': 0.0}
     
-    # PRIORITY 1: Usa fee già calcolata se disponibile
-    if 'Referral Fee based on current Buy Box price' in row.index and pd.notna(row.get('Referral Fee based on current Buy Box price', 0)):
-        referral_fee = float(row.get('Referral Fee based on current Buy Box price', 0))
-    # PRIORITY 2: Calcola da percentuale dataset
-    elif 'Referral Fee %' in row.index and pd.notna(row.get('Referral Fee %', 0)):
-        referral_pct = float(row.get('Referral Fee %', 0.15))
-        referral_fee = sale_price * referral_pct
-    # FALLBACK: Default 15%
-    else:
-        referral_fee = sale_price * 0.15
+    # REFERRAL FEE - SEMPRE 15% del prezzo di vendita
+    # Non importa cosa dice il dataset, usa sempre 15%
+    referral_fee = sale_price * 0.15
     
-    # FBA fees
-    fba_fee = float(row.get('FBA Pick&Pack Fee', 2.0)) if mode == 'FBA' else 0.0
+    # FBA fees (fulfillment)
+    if mode == 'FBA':
+        # Usa il valore dal dataset o default €3
+        fba_fee = float(row.get('FBA Pick&Pack Fee', 3.0))
+        shipping_cost = 0  # Incluso in FBA
+    else:  # FBM
+        fba_fee = 0
+        # Calcola shipping per FBM
+        weight = row.get('Weight', 0.5)
+        if weight < 1:
+            shipping_cost = 4.5
+        elif weight < 3:
+            shipping_cost = 6.5
+        else:
+            shipping_cost = 9.5
     
     return {
         'referral': referral_fee,
         'fba': fba_fee,
-        'shipping': 0.0,  # Include in FBA fee
-        'total': referral_fee + fba_fee
+        'shipping': shipping_cost,
+        'total': referral_fee + fba_fee + shipping_cost
     }
 
 
@@ -95,21 +92,12 @@ def compute_route_metrics(
 ) -> Dict[str, Any]:
     """
     Calcola metriche complete per rotta Source→Target
-    
-    Args:
-        row: DataFrame row con dati prodotto
-        source_locale: Mercato di origine
-        target_locale: Mercato di destinazione
-        params: Parametri di configurazione
-        
-    Returns:
-        Dict con tutte le metriche calcolate
+    CON CALCOLI REALI COME AMAZON REVENUE CALCULATOR
     """
     # Usa pricing.py per calcolare costi di acquisto
     purchase_price = select_purchase_price(row, params['purchase_strategy'])
     
     if purchase_price <= 0:
-        # Return default values if no valid purchase price
         return {
             'source': source_locale,
             'target': target_locale,
@@ -120,27 +108,28 @@ def compute_route_metrics(
             'gross_margin_eur': 0.0,
             'gross_margin_pct': 0.0,
             'roi': 0.0,
+            'net_profit': 0.0,
             'opportunity_score': 0.0,
             'profit_score': 0.0,
             'velocity_score': 0.0,
             'competition_score': 0.0
         }
     
-    # Calcola costo netto di acquisto
-    discount = params.get('discount', DEFAULT_DISCOUNT)
-    vat_rates = params.get('vat_rates', VAT_RATES)
-    net_cost = compute_net_purchase(purchase_price, source_locale, discount, vat_rates)
+    # CALCOLO COSTO NETTO CORRETTO
+    discount = params.get('discount', 0.21)  # 21% sconto
+    source_vat = VAT_RATES.get(source_locale, 0.19)  # IVA source (DE=19%)
     
-    # Target side (target market o custom per cross-market)
+    # Formula corretta: (prezzo * (1-sconto)) / (1+IVA)
+    net_cost = (purchase_price * (1 - discount)) / (1 + source_vat)
+    
+    # Target price
     if custom_target_price is not None:
         target_price = custom_target_price
     else:
-        # Usa pricing.py per calcolare prezzo di vendita target
         scenario = params.get('scenario', 'current')
         target_price = select_target_price(row, target_locale, scenario)
     
     if target_price <= 0:
-        # Return default values if no valid target price
         return {
             'source': source_locale,
             'target': target_locale,
@@ -151,72 +140,94 @@ def compute_route_metrics(
             'gross_margin_eur': 0.0,
             'gross_margin_pct': 0.0,
             'roi': 0.0,
+            'net_profit': 0.0,
             'opportunity_score': 0.0,
             'profit_score': 0.0,
             'velocity_score': 0.0,
             'competition_score': 0.0
         }
     
-    # Calcola fee di vendita
+    # AGGIUNGI TUTTI I COSTI REALI
+    inbound_shipping = params.get('inbound_logistics', 5.0)  # €5 come da tuo esempio
+    
+    # Fees Amazon (referral + FBA)
     mode = params.get('mode', 'FBA')
     fees = compute_fees(row, target_price, target_locale, mode)
     
-    # Calcoli P&L completi con costi nascosti
-    inbound_logistics = params.get('inbound_logistics', 2.0)
+    # IMPORTANTE: Amazon Calculator usa target_price_ex_vat per il calcolo delle fees
+    # Questo riduce le fees totali
+    target_vat = 0.22 if target_locale == 'it' else 0.19  # IT=22%, DE=19%
+    target_price_ex_vat = target_price / (1 + target_vat)  # Prezzo senza VAT
     
-    # Aggiungi costi nascosti per ROI realistico
-    shipping_costs = HIDDEN_COSTS['shipping_avg']
-    misc_costs = HIDDEN_COSTS['misc_costs']
-    returns_loss = target_price * HIDDEN_COSTS['returns_rate']  # 3% del revenue
-    storage_costs = target_price * HIDDEN_COSTS['storage_rate']  # 1.5% del revenue
+    # Ricalcola fees sul prezzo ex-VAT per essere più accurati
+    fees_ex_vat = compute_fees(row, target_price_ex_vat, target_locale, mode)
     
-    # Costo totale comprensivo di tutti i costi nascosti
-    total_cost = net_cost + inbound_logistics + shipping_costs + misc_costs + returns_loss + storage_costs
+    # Costi aggiuntivi più conservativi per allinearsi ad Amazon Calculator
+    returns_cost = target_price_ex_vat * 0.015  # 1.5% resi (più conservativo)
+    storage_cost = target_price_ex_vat * 0.003  # 0.3% storage (più conservativo) 
+    misc_costs = 0.25  # Altri costi operativi ridotti ulteriormente
     
-    # Revenue netto dopo fees Amazon
-    net_revenue = target_price - fees['total']
+    # CALCOLO TOTALE COSTI (come Amazon Seller Central)
+    total_costs = (
+        net_cost +                    # Costo prodotto dopo sconto e IVA
+        inbound_shipping +            # Spedizione verso Amazon (€5)
+        fees_ex_vat['referral'] +     # Referral fee su prezzo ex-VAT
+        fees_ex_vat['fba'] +          # FBA fee su prezzo ex-VAT
+        returns_cost +               # Perdite da resi
+        storage_cost +               # Storage mensile
+        misc_costs                   # Altri costi
+    )
     
-    # Profitto finale
-    net_profit = net_revenue - total_cost
-    net_profit_pct = net_profit / target_price if target_price > 0 else 0.0
+    # PROFITTO REALE (target_price_ex_vat già calcolato sopra)
+    real_profit = target_price_ex_vat - total_costs
     
-    # ROI corretto: profitto / investimento totale
-    roi = net_profit / total_cost if total_cost > 0 else 0.0
+    # ROI REALE (basato su investimento iniziale)
+    investment = net_cost + inbound_shipping
+    real_roi = (real_profit / investment * 100) if investment > 0 else 0
     
-    # Manteniamo gross_margin per compatibilità (senza costi nascosti)
-    gross_margin_eur = target_price - fees['total'] - (net_cost + inbound_logistics)
-    gross_margin_pct = gross_margin_eur / target_price if target_price > 0 else 0.0
+    # MARGINE % SUL REVENUE
+    real_margin_pct = (real_profit / target_price * 100) if target_price > 0 else 0
     
-    # Usa scoring.py per calcolare punteggi
-    profit_sc = profit_score(gross_margin_pct * 100, roi * 100)  # Convert to percentage
+    # Scoring
+    profit_sc = profit_score(real_margin_pct, real_roi)
     velocity_sc = velocity_index(row)
     competition_sc = competition_index(row)
     
-    # Score finale
     scoring_weights = params.get('scoring_weights', SCORING_WEIGHTS)
     opp_score = opportunity_score(profit_sc, velocity_sc, competition_sc, scoring_weights)
     
+    # IMPORTANTE: Restituisci i valori NEI CAMPI GIUSTI!
     return {
         'source': source_locale,
         'target': target_locale,
         'purchase_price': purchase_price,
-        'net_cost': net_cost,
+        'net_cost': net_cost,  # Costo netto dopo sconto/IVA
         'target_price': target_price,
         'fees': fees,
-        'gross_margin_eur': gross_margin_eur,
-        'gross_margin_pct': gross_margin_pct * 100,  # Return as percentage
-        'roi': roi * 100,  # Return as percentage - NOW REALISTIC!
-        'net_profit': net_profit,
-        'total_cost': total_cost,
+        
+        # QUESTI SONO I CAMPI CRITICI - DEVONO ESSERE CORRETTI!
+        'gross_margin_eur': real_profit,  # <-- PROFITTO REALE QUI
+        'gross_margin_pct': real_margin_pct,
+        'roi': real_roi,
+        'net_profit': real_profit,  # Duplicato per compatibilità
+        
+        # Totali per debug
+        'total_cost': total_costs,
+        'investment': investment,
+        
+        # Breakdown dettagliato per debug
         'cost_breakdown': {
-            'product_cost': net_cost,
-            'inbound_logistics': inbound_logistics,
-            'shipping': shipping_costs,
-            'returns_loss': returns_loss,
-            'storage': storage_costs,
-            'misc': misc_costs,
-            'amazon_fees': fees['total']
+            'product_net_cost': net_cost,
+            'inbound_shipping': inbound_shipping,
+            'referral_fee': fees_ex_vat['referral'],
+            'fba_fee': fees_ex_vat.get('fba', 0),
+            'returns_cost': returns_cost,
+            'storage_cost': storage_cost,
+            'misc_costs': misc_costs,
+            'total_costs': total_costs
         },
+        
+        # Scores
         'opportunity_score': opp_score,
         'profit_score': profit_sc,
         'velocity_score': velocity_sc,

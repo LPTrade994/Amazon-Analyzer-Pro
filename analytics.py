@@ -609,3 +609,493 @@ def assess_amazon_competition_risk(row):
             'prime_eligible': prime_eligible
         }
     }
+
+
+def detect_stockout_opportunities(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Identifica prodotti con pattern di stock-out ricorrenti
+    
+    Args:
+        df: DataFrame con i dati dei prodotti
+        
+    Returns:
+        DataFrame con le opportunità di stock-out ordinate per punteggio
+    """
+    
+    opportunities = []
+    
+    for _, row in df.iterrows():
+        # Check Amazon OOS pattern
+        amazon_oos_90d = row.get('Amazon: 90 days OOS', 0)
+        amazon_oos_count = row.get('Amazon: OOS Count 90 days', 0)
+        
+        # Gestione valori NaN
+        if pd.isna(amazon_oos_90d):
+            amazon_oos_90d = 0
+        if pd.isna(amazon_oos_count):
+            amazon_oos_count = 0
+            
+        # Check price drops during OOS
+        price_drop_30d = row.get('Buy Box 🚚: 30 days drop %', 0)
+        if pd.isna(price_drop_30d):
+            price_drop_30d = 0
+            
+        # High OOS + price stability = opportunity
+        if amazon_oos_90d > 30 and price_drop_30d < 10:
+            # Calculate opportunity score
+            base_score = amazon_oos_90d  # Base score from OOS percentage
+            stability_bonus = max(0, (10 - price_drop_30d) * 2)  # Price stability bonus
+            frequency_bonus = min(20, amazon_oos_count * 2)  # OOS frequency bonus
+            
+            opportunity_score = min(100, base_score + stability_bonus + frequency_bonus)
+            
+            # Additional metrics for better analysis
+            current_price = row.get('Buy Box 🚚: Current', 0)
+            sales_rank = row.get('Sales Rank: Current', 999999)
+            rating = row.get('Reviews: Rating', 0)
+            velocity_score = velocity_index(row) if callable(globals().get('velocity_index')) else 50
+            
+            opportunities.append({
+                'asin': row.get('ASIN', ''),
+                'title': row.get('Title', ''),
+                'amazon_oos_pct': amazon_oos_90d,
+                'oos_frequency': amazon_oos_count,
+                'price_stability': 100 - price_drop_30d,
+                'stockout_opportunity_score': opportunity_score,
+                'recommendation': generate_stockout_strategy(amazon_oos_90d, amazon_oos_count),
+                'current_price': current_price,
+                'sales_rank': sales_rank,
+                'rating': rating,
+                'velocity_score': velocity_score,
+                'price_drop_pct': price_drop_30d
+            })
+    
+    result_df = pd.DataFrame(opportunities)
+    if not result_df.empty:
+        result_df = result_df.sort_values('stockout_opportunity_score', ascending=False)
+    
+    return result_df
+
+
+def generate_stockout_strategy(oos_pct: float, oos_count: int) -> str:
+    """
+    Generate strategic recommendation for stock-out patterns
+    
+    Args:
+        oos_pct: Percentage of time Amazon was out of stock
+        oos_count: Number of times Amazon was out of stock
+        
+    Returns:
+        str: Strategic recommendation
+    """
+    
+    try:
+        if oos_pct > 50 and oos_count > 10:
+            return "🔥 AGGRESSIVE: Amazon chronically out of stock. Stock heavy and price competitively."
+        elif oos_pct > 40 and oos_count > 8:
+            return "💰 MODERATE+: Frequent Amazon stockouts. Maintain steady inventory with competitive pricing."
+        elif oos_pct > 30:
+            return "💰 MODERATE: Regular Amazon stockouts. Maintain steady inventory."
+        elif oos_pct > 20:
+            return "👀 MONITOR+: Occasional stockouts with potential. Watch for patterns and stock lightly."
+        else:
+            return "👀 MONITOR: Occasional stockouts. Watch for patterns."
+    except UnicodeEncodeError:
+        # Fallback for environments that can't handle emojis
+        if oos_pct > 50 and oos_count > 10:
+            return "AGGRESSIVE: Amazon chronically out of stock. Stock heavy and price competitively."
+        elif oos_pct > 40 and oos_count > 8:
+            return "MODERATE+: Frequent Amazon stockouts. Maintain steady inventory with competitive pricing."
+        elif oos_pct > 30:
+            return "MODERATE: Regular Amazon stockouts. Maintain steady inventory."
+        elif oos_pct > 20:
+            return "MONITOR+: Occasional stockouts with potential. Watch for patterns and stock lightly."
+        else:
+            return "MONITOR: Occasional stockouts. Watch for patterns."
+
+
+def analyze_stockout_patterns(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Analizza i pattern di stock-out nel dataset
+    
+    Args:
+        df: DataFrame con i dati dei prodotti
+        
+    Returns:
+        Dict con statistiche sui pattern di stock-out
+    """
+    
+    if df.empty:
+        return {'products_analyzed': 0}
+    
+    stockout_data = []
+    
+    for _, row in df.iterrows():
+        amazon_oos_90d = row.get('Amazon: 90 days OOS', 0)
+        amazon_oos_count = row.get('Amazon: OOS Count 90 days', 0)
+        price_drop_30d = row.get('Buy Box 🚚: 30 days drop %', 0)
+        
+        # Gestione valori NaN
+        if pd.isna(amazon_oos_90d):
+            amazon_oos_90d = 0
+        if pd.isna(amazon_oos_count):
+            amazon_oos_count = 0
+        if pd.isna(price_drop_30d):
+            price_drop_30d = 0
+            
+        stockout_data.append({
+            'asin': row.get('ASIN', ''),
+            'amazon_oos_pct': amazon_oos_90d,
+            'oos_count': amazon_oos_count,
+            'price_drop': price_drop_30d,
+            'has_significant_oos': amazon_oos_90d > 30,
+            'is_opportunity': amazon_oos_90d > 30 and price_drop_30d < 10
+        })
+    
+    if not stockout_data:
+        return {'products_analyzed': 0}
+    
+    stockout_df = pd.DataFrame(stockout_data)
+    
+    # Statistiche sui pattern
+    analysis = {
+        'products_analyzed': len(stockout_df),
+        'products_with_significant_oos': len(stockout_df[stockout_df['has_significant_oos']]),
+        'stockout_opportunities': len(stockout_df[stockout_df['is_opportunity']]),
+        'avg_amazon_oos_pct': stockout_df['amazon_oos_pct'].mean(),
+        'avg_oos_count': stockout_df['oos_count'].mean(),
+        'avg_price_drop': stockout_df['price_drop'].mean()
+    }
+    
+    # Percentuali
+    total = analysis['products_analyzed']
+    if total > 0:
+        analysis['pct_significant_oos'] = analysis['products_with_significant_oos'] / total * 100
+        analysis['pct_opportunities'] = analysis['stockout_opportunities'] / total * 100
+    else:
+        analysis['pct_significant_oos'] = 0
+        analysis['pct_opportunities'] = 0
+    
+    # Pattern di distribuzione
+    oos_distribution = {
+        'low_oos (0-20%)': len(stockout_df[(stockout_df['amazon_oos_pct'] >= 0) & (stockout_df['amazon_oos_pct'] <= 20)]),
+        'medium_oos (20-40%)': len(stockout_df[(stockout_df['amazon_oos_pct'] > 20) & (stockout_df['amazon_oos_pct'] <= 40)]),
+        'high_oos (40-60%)': len(stockout_df[(stockout_df['amazon_oos_pct'] > 40) & (stockout_df['amazon_oos_pct'] <= 60)]),
+        'critical_oos (>60%)': len(stockout_df[stockout_df['amazon_oos_pct'] > 60])
+    }
+    
+    analysis['oos_distribution'] = oos_distribution
+    
+    return analysis
+
+
+def get_stockout_insights(stockout_df: pd.DataFrame) -> list:
+    """
+    Genera insights strategici sui pattern di stock-out
+    
+    Args:
+        stockout_df: DataFrame con le opportunità di stock-out
+        
+    Returns:
+        list: Lista di insights strategici
+    """
+    
+    insights = []
+    
+    if stockout_df.empty:
+        insights.append("No stock-out opportunities detected in current dataset.")
+        return insights
+    
+    total_opportunities = len(stockout_df)
+    avg_score = stockout_df['stockout_opportunity_score'].mean()
+    
+    # Insight generale
+    insights.append(f"Found {total_opportunities} stock-out opportunities with average score {avg_score:.1f}")
+    
+    # Analisi per categoria di opportunità
+    aggressive_ops = len(stockout_df[stockout_df['amazon_oos_pct'] > 50])
+    if aggressive_ops > 0:
+        insights.append(f"{aggressive_ops} AGGRESSIVE opportunities: Amazon frequently out of stock (>50%)")
+    
+    moderate_ops = len(stockout_df[(stockout_df['amazon_oos_pct'] > 30) & (stockout_df['amazon_oos_pct'] <= 50)])
+    if moderate_ops > 0:
+        insights.append(f"{moderate_ops} MODERATE opportunities: Regular Amazon stockouts (30-50%)")
+    
+    # Analisi stabilità prezzi
+    stable_price_ops = len(stockout_df[stockout_df['price_drop_pct'] < 5])
+    if stable_price_ops > 0:
+        pct_stable = stable_price_ops / total_opportunities * 100
+        insights.append(f"{stable_price_ops} opportunities ({pct_stable:.0f}%) have very stable prices (<5% drop)")
+    
+    # Top opportunities
+    top_ops = stockout_df.head(3)
+    if not top_ops.empty:
+        top_score = top_ops.iloc[0]['stockout_opportunity_score']
+        insights.append(f"Top opportunity scores {top_score:.0f} with {top_ops.iloc[0]['amazon_oos_pct']:.0f}% Amazon OOS")
+    
+    # Raccomandazione generale
+    high_score_ops = len(stockout_df[stockout_df['stockout_opportunity_score'] > 80])
+    if high_score_ops > 0:
+        try:
+            insights.append(f"⭐ {high_score_ops} high-score opportunities (>80) - prioritize these for inventory")
+        except UnicodeEncodeError:
+            insights.append(f"STAR: {high_score_ops} high-score opportunities (>80) - prioritize these for inventory")
+    
+    return insights
+
+
+def detect_seasonality(row: pd.Series) -> Dict[str, Any]:
+    """
+    Detecta pattern stagionali confrontando medie storiche
+    
+    Args:
+        row: Pandas Series con i dati del prodotto
+        
+    Returns:
+        Dict con informazioni sulla stagionalità
+    """
+    
+    # Get historical averages with safe numeric conversion
+    avg_30d = row.get('Buy Box 🚚: 30 days avg.', 0)
+    avg_90d = row.get('Buy Box 🚚: 90 days avg.', 0)
+    avg_180d = row.get('Buy Box 🚚: 180 days avg.', 0)
+    avg_365d = row.get('Buy Box 🚚: 365 days avg.', 0)
+    
+    # Handle NaN values safely
+    if pd.isna(avg_30d) or avg_30d <= 0:
+        avg_30d = 0
+    if pd.isna(avg_90d) or avg_90d <= 0:
+        avg_90d = 0
+    if pd.isna(avg_180d) or avg_180d <= 0:
+        avg_180d = 0
+    if pd.isna(avg_365d) or avg_365d <= 0:
+        avg_365d = 0
+    
+    if avg_365d <= 0:
+        return {
+            'has_seasonality': False, 
+            'seasonal_index': 1.0,
+            'pattern': 'insufficient_data',
+            'recommendation': 'Insufficient historical data for seasonality analysis',
+            'data_quality': 'poor'
+        }
+    
+    # Calculate seasonal indices
+    current_vs_year = avg_30d / avg_365d if avg_365d > 0 else 1.0
+    quarter_vs_year = avg_90d / avg_365d if avg_365d > 0 else 1.0
+    half_year_vs_year = avg_180d / avg_365d if avg_365d > 0 else 1.0
+    
+    seasonality_data = {
+        'has_seasonality': False,
+        'seasonal_index': current_vs_year,
+        'quarter_index': quarter_vs_year,
+        'half_year_index': half_year_vs_year,
+        'pattern': 'stable',
+        'recommendation': '',
+        'data_quality': 'good',
+        'trend_strength': 0.0
+    }
+    
+    # Calculate trend strength
+    trend_strength = abs(current_vs_year - 1.0)
+    seasonality_data['trend_strength'] = trend_strength
+    
+    try:
+        # Detect patterns with fallback for Unicode issues
+        if current_vs_year >= 1.20:  # 20% above yearly average
+            seasonality_data['has_seasonality'] = True
+            seasonality_data['pattern'] = 'peak_season'
+            try:
+                seasonality_data['recommendation'] = f'📈 PEAK SEASON: Prices {(current_vs_year-1)*100:.0f}% above average. Good time to sell.'
+            except UnicodeEncodeError:
+                seasonality_data['recommendation'] = f'PEAK SEASON: Prices {(current_vs_year-1)*100:.0f}% above average. Good time to sell.'
+                
+        elif current_vs_year <= 0.80:  # 20% below yearly average
+            seasonality_data['has_seasonality'] = True
+            seasonality_data['pattern'] = 'off_season'
+            try:
+                seasonality_data['recommendation'] = f'📉 OFF SEASON: Prices {(1-current_vs_year)*100:.0f}% below average. Good time to buy and hold.'
+            except UnicodeEncodeError:
+                seasonality_data['recommendation'] = f'OFF SEASON: Prices {(1-current_vs_year)*100:.0f}% below average. Good time to buy and hold.'
+                
+        elif abs(current_vs_year - quarter_vs_year) > 0.15:
+            seasonality_data['has_seasonality'] = True
+            seasonality_data['pattern'] = 'transitioning'
+            direction = "upward" if current_vs_year > quarter_vs_year else "downward"
+            try:
+                seasonality_data['recommendation'] = f'🔄 TRANSITIONING: Price trend changing {direction}. Monitor closely.'
+            except UnicodeEncodeError:
+                seasonality_data['recommendation'] = f'TRANSITIONING: Price trend changing {direction}. Monitor closely.'
+        
+        else:
+            # Stable pattern
+            seasonality_data['pattern'] = 'stable'
+            seasonality_data['recommendation'] = 'Stable pricing pattern. No significant seasonal variation detected.'
+    
+    except Exception as e:
+        # Fallback for any calculation errors
+        seasonality_data['pattern'] = 'error'
+        seasonality_data['recommendation'] = 'Error in seasonality calculation'
+        seasonality_data['data_quality'] = 'error'
+    
+    return seasonality_data
+
+
+def analyze_seasonal_opportunities(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Analizza le opportunità stagionali nell'intero dataset
+    
+    Args:
+        df: DataFrame con i dati dei prodotti
+        
+    Returns:
+        DataFrame con le opportunità stagionali
+    """
+    
+    seasonal_opportunities = []
+    
+    for _, row in df.iterrows():
+        seasonality = detect_seasonality(row)
+        
+        # Only include products with detected seasonality
+        if seasonality['has_seasonality']:
+            # Additional metrics for analysis
+            current_price = row.get('Buy Box 🚚: Current', 0)
+            sales_rank = row.get('Sales Rank: Current', 999999)
+            rating = row.get('Reviews: Rating', 0)
+            
+            # Calculate opportunity score based on seasonality
+            base_score = 50
+            if seasonality['pattern'] == 'off_season':
+                base_score = 80  # High opportunity to buy
+            elif seasonality['pattern'] == 'peak_season':
+                base_score = 70  # Good opportunity to sell
+            elif seasonality['pattern'] == 'transitioning':
+                base_score = 60  # Monitor opportunity
+            
+            # Adjust score based on trend strength
+            trend_bonus = min(30, seasonality['trend_strength'] * 100)
+            opportunity_score = min(100, base_score + trend_bonus)
+            
+            seasonal_opportunities.append({
+                'asin': row.get('ASIN', ''),
+                'title': row.get('Title', ''),
+                'seasonal_pattern': seasonality['pattern'],
+                'seasonal_index': seasonality['seasonal_index'],
+                'trend_strength': seasonality['trend_strength'],
+                'seasonal_opportunity_score': opportunity_score,
+                'recommendation': seasonality['recommendation'],
+                'current_price': current_price,
+                'sales_rank': sales_rank,
+                'rating': rating,
+                'data_quality': seasonality['data_quality']
+            })
+    
+    result_df = pd.DataFrame(seasonal_opportunities)
+    if not result_df.empty:
+        result_df = result_df.sort_values('seasonal_opportunity_score', ascending=False)
+    
+    return result_df
+
+
+def get_seasonal_insights(seasonal_df: pd.DataFrame) -> list:
+    """
+    Genera insights sulle opportunità stagionali
+    
+    Args:
+        seasonal_df: DataFrame con le opportunità stagionali
+        
+    Returns:
+        list: Lista di insights strategici
+    """
+    
+    insights = []
+    
+    if seasonal_df.empty:
+        insights.append("No seasonal patterns detected in current dataset.")
+        return insights
+    
+    total_seasonal = len(seasonal_df)
+    
+    # Pattern analysis
+    peak_season = len(seasonal_df[seasonal_df['seasonal_pattern'] == 'peak_season'])
+    off_season = len(seasonal_df[seasonal_df['seasonal_pattern'] == 'off_season'])
+    transitioning = len(seasonal_df[seasonal_df['seasonal_pattern'] == 'transitioning'])
+    
+    insights.append(f"Found {total_seasonal} products with seasonal patterns")
+    
+    if off_season > 0:
+        avg_off_season_score = seasonal_df[seasonal_df['seasonal_pattern'] == 'off_season']['seasonal_opportunity_score'].mean()
+        insights.append(f"{off_season} OFF-SEASON opportunities (avg score: {avg_off_season_score:.0f}) - prime time to stock up")
+    
+    if peak_season > 0:
+        avg_peak_score = seasonal_df[seasonal_df['seasonal_pattern'] == 'peak_season']['seasonal_opportunity_score'].mean()
+        insights.append(f"{peak_season} PEAK-SEASON products (avg score: {avg_peak_score:.0f}) - consider selling existing inventory")
+    
+    if transitioning > 0:
+        insights.append(f"{transitioning} products in TRANSITION - monitor for directional changes")
+    
+    # Strength analysis
+    strong_trends = len(seasonal_df[seasonal_df['trend_strength'] > 0.3])
+    if strong_trends > 0:
+        pct_strong = strong_trends / total_seasonal * 100
+        insights.append(f"{strong_trends} products ({pct_strong:.0f}%) show strong seasonal trends (>30% variation)")
+    
+    # Top opportunities
+    if not seasonal_df.empty:
+        top_opportunity = seasonal_df.iloc[0]
+        insights.append(f"Top seasonal opportunity: {top_opportunity['seasonal_pattern'].upper()} pattern with {top_opportunity['seasonal_opportunity_score']:.0f} score")
+    
+    return insights
+
+
+def seasonal_timing_recommendation(seasonal_pattern: str, seasonal_index: float) -> str:
+    """
+    Fornisce raccomandazioni di timing basate sui pattern stagionali
+    
+    Args:
+        seasonal_pattern: Tipo di pattern ('peak_season', 'off_season', 'transitioning', 'stable')
+        seasonal_index: Indice stagionale (ratio corrente vs annuale)
+        
+    Returns:
+        str: Raccomandazione di timing strategico
+    """
+    
+    try:
+        if seasonal_pattern == 'off_season':
+            if seasonal_index < 0.7:
+                return "🛒 BUY AGGRESSIVE: Deep off-season discount. Stock heavily for seasonal rebound."
+            else:
+                return "🛒 BUY MODERATE: Off-season opportunity. Build inventory gradually."
+                
+        elif seasonal_pattern == 'peak_season':
+            if seasonal_index > 1.3:
+                return "💰 SELL AGGRESSIVE: Peak pricing. Liquidate inventory at premium."
+            else:
+                return "💰 SELL MODERATE: Good seasonal pricing. Move inventory steadily."
+                
+        elif seasonal_pattern == 'transitioning':
+            return "⏰ TIMING CRITICAL: Trend changing. Act quickly in current direction."
+            
+        else:  # stable
+            return "📊 MONITOR: No strong seasonal pattern. Focus on other opportunities."
+    
+    except UnicodeEncodeError:
+        # Fallback without emojis
+        if seasonal_pattern == 'off_season':
+            if seasonal_index < 0.7:
+                return "BUY AGGRESSIVE: Deep off-season discount. Stock heavily for seasonal rebound."
+            else:
+                return "BUY MODERATE: Off-season opportunity. Build inventory gradually."
+                
+        elif seasonal_pattern == 'peak_season':
+            if seasonal_index > 1.3:
+                return "SELL AGGRESSIVE: Peak pricing. Liquidate inventory at premium."
+            else:
+                return "SELL MODERATE: Good seasonal pricing. Move inventory steadily."
+                
+        elif seasonal_pattern == 'transitioning':
+            return "TIMING CRITICAL: Trend changing. Act quickly in current direction."
+            
+        else:  # stable
+            return "MONITOR: No strong seasonal pattern. Focus on other opportunities."
