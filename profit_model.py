@@ -180,17 +180,13 @@ def compute_route_metrics(
     mode = params.get('mode', 'FBA')
     fees = compute_fees(row, target_price, target_locale, mode)
     
-    # COSTI AGGIUNTIVI (1.8% come richiesto)
-    returns_cost = target_price * 0.015   # 1.5% resi
-    storage_cost = target_price * 0.003   # 0.3% storage
-    
-    # CALCOLO PROFITTO AMAZON/FBM
+    # CALCOLO PROFITTO AMAZON/FBM - ALLINEATO AL REVENUE CALCULATOR UFFICIALE
+    # Solo costi base: prodotto + spedizione + fees ufficiali Amazon
     total_costs_marketplace = (
         net_cost +                      # Costo prodotto netto
         params.get('inbound_logistics', 2.0) +  # Inbound verso magazzino
-        fees['total'] +                 # Referral + Fulfillment
-        returns_cost +                  # Resi
-        storage_cost                    # Storage
+        fees['referral'] +              # Referral fee
+        fees['fulfillment']             # Fulfillment fee
     )
     
     profit_marketplace = target_price - total_costs_marketplace
@@ -259,9 +255,7 @@ def compute_route_metrics(
             'referral_fee': fees['referral'],
             'fulfillment_fee': fees['fulfillment'],
             'website_fee_5pct': website_fee,
-            'website_shipping': website_shipping,
-            'returns_cost': returns_cost,
-            'storage_cost': storage_cost
+            'website_shipping': website_shipping
         },
         
         # Scores
