@@ -856,20 +856,32 @@ def prepare_consolidated_data(best_routes_df: pd.DataFrame) -> pd.DataFrame:
     df['ROI %'] = df['roi'].apply(format_percentage)
     df['Opportunity Score'] = df['opportunity_score'].apply(get_opportunity_badge)
     
-    # Final column selection with proper names
+    # AGGIUNGI COLONNE WEBSITE
+    df['Profit Website €'] = df['profit_website'].apply(format_currency)
+    df['ROI Website %'] = df['roi_website'].apply(format_percentage)
+    df['Best Channel'] = df['best_channel']
+    df['Δ Profit'] = df['profit_difference'].apply(lambda x: f"+€{x:.2f}" if x > 0 else f"-€{abs(x):.2f}")
+    
+    # Final columns con website
     final_columns = [
-        'asin', 'title', 'Best Route', 'Purchase Price €', 'Net Cost €',
-        'Target Price €', 'Fees €', 'Gross Margin €', 'Gross Margin %',
-        'ROI %', 'Opportunity Score', 'Links'
+        'asin', 'title', 'Best Route', 
+        'Purchase Price €', 'Net Cost €', 'Target Price €',
+        'Fees €', 'Gross Margin €', 'ROI %',  # Amazon/FBM
+        'Profit Website €', 'ROI Website %',   # Website
+        'Best Channel', 'Δ Profit',            # Confronto
+        'Opportunity Score', 'Links'
     ]
     
     display_df = df[final_columns].copy()
     
     # Rename columns for display
     display_df.columns = [
-        'ASIN', 'Title', 'Best Route', 'Purchase Price €', 'Net Cost €',
-        'Target Price €', 'Fees €', 'Gross Margin €', 'Gross Margin %',
-        'ROI %', 'Opportunity Score', 'Links'
+        'ASIN', 'Title', 'Best Route', 
+        'Purchase Price €', 'Net Cost €', 'Target Price €',
+        'Fees €', 'Gross Margin €', 'ROI %',  # Amazon/FBM
+        'Profit Website €', 'ROI Website %',   # Website
+        'Best Channel', 'Δ Profit',            # Confronto
+        'Opportunity Score', 'Links'
     ]
     
     return display_df
@@ -2081,38 +2093,38 @@ def main():
                             break
                     
                     if nintendo_data:
-                        st.write("**DATI NINTENDO SWITCH CAMERA:**")
-                        st.write(f"Buy Price: €{nintendo_data.get('buy_price', 0):.2f}")
-                        st.write(f"Net Cost: €{nintendo_data.get('net_cost', 0):.2f}")
-                        st.write(f"Sell Price: €{nintendo_data.get('sell_price', 0):.2f}")
-                        st.write(f"Profit (dal sistema): €{nintendo_data.get('profit_eur', 0):.2f}")
-                        st.write(f"ROI (dal sistema): {nintendo_data.get('roi_pct', 0):.1f}%")
+                        st.write("**CALCOLI NINTENDO SWITCH CAMERA:**")
                         
-                        # Mostra cost breakdown se disponibile
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.write("**AMAZON/FBM:**")
+                            st.write(f"Profitto: €{nintendo_data.get('gross_margin_eur', 0):.2f}")
+                            st.write(f"ROI: {nintendo_data.get('roi', 0):.1f}%")
+                            st.write(f"Referral Fee: €{nintendo_data.get('cost_breakdown', {}).get('referral_fee', 0):.2f}")
+                            st.write(f"Fulfillment: €{nintendo_data.get('cost_breakdown', {}).get('fulfillment_fee', 0):.2f}")
+                        
+                        with col2:
+                            st.write("**SITO WEB:**")
+                            st.write(f"Profitto: €{nintendo_data.get('profit_website', 0):.2f}")
+                            st.write(f"ROI: {nintendo_data.get('roi_website', 0):.1f}%")
+                            st.write(f"Fee 5%: €{nintendo_data.get('cost_breakdown', {}).get('website_fee_5pct', 0):.2f}")
+                            st.write(f"Spedizione: €{nintendo_data.get('cost_breakdown', {}).get('website_shipping', 0):.2f}")
+                        
+                        with col3:
+                            st.write("**CONFRONTO:**")
+                            diff = nintendo_data.get('profit_difference', 0)
+                            if diff > 0:
+                                st.success(f"Sito Web +€{diff:.2f}")
+                            else:
+                                st.error(f"Amazon +€{abs(diff):.2f}")
+                            st.info(f"Canale Migliore: {nintendo_data.get('best_channel', 'N/A')}")
+                        
+                        # Mostra cost breakdown dettagliato
                         if 'cost_breakdown' in nintendo_data:
-                            st.write("\n**Cost Breakdown:**")
+                            st.write("\n**Cost Breakdown Completo:**")
                             for cost_type, amount in nintendo_data['cost_breakdown'].items():
                                 st.write(f"  {cost_type}: €{amount:.2f}")
-                        
-                        # CALCOLO MANUALE CORRETTO
-                        st.write("\n**CALCOLO CORRETTO (Amazon Calculator):**")
-                        buy = 39.29
-                        net_after_discount = buy * 0.79 / 1.19  # Sconto 21% e rimuovi IVA 19%
-                        inbound = 5.14
-                        referral = 56.39 * 0.15
-                        fba = 3.0
-                        returns = 56.39 * 0.02
-                        total_cost = net_after_discount + inbound + referral + fba + returns + 1.5
-                        real_profit = 56.39 - total_cost
-                        real_roi = (real_profit / (net_after_discount + inbound)) * 100
-                        
-                        st.write(f"Net dopo sconto/IVA: €{net_after_discount:.2f}")
-                        st.write(f"Costi totali: €{total_cost:.2f}")
-                        st.write(f"**PROFITTO REALE: €{real_profit:.2f}**")
-                        st.write(f"**ROI REALE: {real_roi:.1f}%**")
-                        
-                        if abs(nintendo_data.get('profit_eur', 0) - real_profit) > 2:
-                            st.error(f"⚠️ DISCREPANZA: Sistema mostra €{nintendo_data.get('profit_eur', 0):.2f}, dovrebbe essere €{real_profit:.2f}")
                     else:
                         st.info("Nintendo Switch Camera (B0F3JNJXQ5) non trovato nei dati")
                 
