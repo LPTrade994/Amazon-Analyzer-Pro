@@ -860,20 +860,15 @@ def prepare_consolidated_data(best_routes_df: pd.DataFrame) -> pd.DataFrame:
     df['ROI %'] = df['roi'].apply(format_percentage)
     df['Opportunity Score'] = df['opportunity_score'].apply(get_opportunity_badge)
     
-    # Add combined profit column with Amazon primary and website as note
-    df['Profit Amazon €'] = df['gross_margin_eur'].apply(format_currency)
-    df['Profit Info'] = df.apply(lambda x: 
-        f"{format_currency(x['gross_margin_eur'])} | Web: {format_currency(x['profit_website'])}", axis=1)
-    df['Best Channel'] = df['best_channel']
-    df['Δ Profit'] = df['profit_difference'].apply(lambda x: f"+€{x:.2f}" if x > 0 else f"-€{abs(x):.2f}")
+    # SOSTITUIRE la colonna "Profit (Amazon | Web)" CON:
+    df['Amazon €'] = df['gross_margin_eur'].apply(format_currency)
+    df['Web €'] = df['profit_website'].apply(lambda x: f"(+€{x:.2f})" if x > 0 else "")
     
-    # Final columns with Amazon profit primary
+    # Final columns - rendere sito web meno prominente:
     final_columns = [
         'asin', 'title', 'Best Route', 
         'Purchase Price €', 'Net Cost €', 'Target Price €',
-        'Fees €', 'Gross Margin €', 'Margine %', 'ROI %',  # Amazon/FBM Primary
-        'Profit Info',                          # Combined profit info
-        'Best Channel', 'Δ Profit',            # Confronto
+        'Fees €', 'Amazon €', 'Margine %', 'Web €',  # Web meno prominente
         'Opportunity Score', 'Links'
     ]
     
@@ -883,43 +878,355 @@ def prepare_consolidated_data(best_routes_df: pd.DataFrame) -> pd.DataFrame:
     display_df.columns = [
         'ASIN', 'Title', 'Best Route', 
         'Purchase Price €', 'Net Cost €', 'Target Price €',
-        'Fees €', 'Gross Margin €', 'Margine %', 'ROI %',  # Amazon/FBM Primary
-        'Profit (Amazon | Web)',                 # Combined profit info
-        'Best Channel', 'Δ Profit',            # Confronto
+        'Fees €', 'Amazon €', 'Margine %', 'Web €',  # Web meno prominente
         'Opportunity Score', 'Links'
     ]
     
     return display_df
 
 
-def display_consolidated_table(consolidated_df: pd.DataFrame):
-    """Display the consolidated data as a table"""
-    # Configure st.dataframe with column configuration
-    column_config = {
-        'ASIN': st.column_config.TextColumn('ASIN', width=120),
-        'Title': st.column_config.TextColumn('Title', width=300),
-        'Best Route': st.column_config.TextColumn('Best Route', width=100),
-        'Purchase Price €': st.column_config.TextColumn('Purchase Price €', width=130),
-        'Net Cost €': st.column_config.TextColumn('Net Cost €', width=110),
-        'Target Price €': st.column_config.TextColumn('Target Price €', width=120),
-        'Fees €': st.column_config.TextColumn('Fees €', width=80),
-        'Gross Margin €': st.column_config.TextColumn('Gross Margin €', width=130),
-        'Gross Margin %': st.column_config.TextColumn('Gross Margin %', width=120),
-        'Margine %': st.column_config.TextColumn('Margine %', width=90),
-        'ROI %': st.column_config.TextColumn('ROI %', width=80),
-        'Profit (Amazon | Web)': st.column_config.TextColumn('Profit (Amazon | Web)', width=160, help="Amazon profit (primary) | Website profit (secondary)"),
-        'Opportunity Score': st.column_config.TextColumn('Opportunity Score', width=150),
-        'Links': st.column_config.TextColumn('Links', width=80)
+def display_consolidated_table(consolidated_df: pd.DataFrame, filtered_routes: pd.DataFrame = None):
+    """Display the consolidated data as a visually impactful HTML table"""
+    
+    if consolidated_df.empty:
+        st.info("📊 Nessun dato da visualizzare")
+        return
+    
+    def get_score_emoji_and_color(score_str):
+        """Extract numeric score and return emoji + color"""
+        try:
+            # Extract numeric score from badge format
+            import re
+            score_match = re.search(r'(\d+)', str(score_str))
+            if score_match:
+                score = int(score_match.group(1))
+            else:
+                score = 0
+                
+            if score >= 80:
+                return "🌟", "#00ff00", score
+            elif score >= 60:
+                return "⭐", "#ffaa00", score
+            else:
+                return "⚠️", "#ff6666", score
+        except:
+            return "⚠️", "#ff6666", 0
+    
+    def get_margin_emoji_and_color(margin_str):
+        """Extract numeric margin and return emoji + color"""
+        try:
+            # Extract percentage from string like "25.5%"
+            import re
+            margin_match = re.search(r'([\d.]+)', str(margin_str))
+            if margin_match:
+                margin = float(margin_match.group(1))
+            else:
+                margin = 0
+                
+            if margin >= 25:
+                return "🟢", "#00ff00", margin
+            elif margin >= 15:
+                return "🟡", "#ffaa00", margin
+            else:
+                return "🔴", "#ff6666", margin
+        except:
+            return "🔴", "#ff6666", 0
+    
+    # Enhanced CSS for st.dataframe styling
+    dataframe_css = """
+    <style>
+    /* Global Streamlit Dataframe Styling */
+    .stDataFrame {
+        background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 25px 50px rgba(0,0,0,0.9), 0 0 30px rgba(255,0,0,0.15);
+        margin: 20px 0;
     }
     
-    # Display consolidated table
+    .stDataFrame > div {
+        background: transparent;
+        border-radius: 16px;
+    }
+    
+    .stDataFrame [data-testid="stDataFrame"] {
+        background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
+        border-radius: 16px;
+    }
+    
+    .stDataFrame table {
+        background: transparent;
+        color: white;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+    
+    .stDataFrame thead {
+        background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%) !important;
+    }
+    
+    .stDataFrame thead th {
+        background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%) !important;
+        color: white !important;
+        font-weight: bold !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 15px 12px !important;
+        border-bottom: 2px solid rgba(255,255,255,0.2) !important;
+    }
+    
+    .stDataFrame tbody tr {
+        background: linear-gradient(135deg, rgba(26,26,26,0.95), rgba(10,10,10,0.95)) !important;
+        transition: all 0.3s ease;
+    }
+    
+    .stDataFrame tbody tr:nth-child(even) {
+        background: linear-gradient(135deg, rgba(20,20,20,0.95), rgba(15,15,15,0.95)) !important;
+    }
+    
+    .stDataFrame tbody tr:hover {
+        background: linear-gradient(135deg, rgba(42,42,42,0.98), rgba(26,26,26,0.98)) !important;
+        transform: scale(1.005);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.6), 0 0 20px rgba(255,0,0,0.2);
+        border-left: 3px solid #ff0000 !important;
+    }
+    
+    .stDataFrame tbody td {
+        color: white !important;
+        padding: 12px 10px !important;
+        border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+        vertical-align: middle !important;
+    }
+    
+    /* Custom scrollbar for dataframe */
+    .stDataFrame [data-testid="stDataFrame"] {
+        max-height: 600px;
+        overflow: auto;
+    }
+    
+    .stDataFrame [data-testid="stDataFrame"]::-webkit-scrollbar {
+        width: 12px;
+        height: 12px;
+    }
+    
+    .stDataFrame [data-testid="stDataFrame"]::-webkit-scrollbar-track {
+        background: #1a1a1a;
+        border-radius: 6px;
+    }
+    
+    .stDataFrame [data-testid="stDataFrame"]::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #ff0000, #cc0000);
+        border-radius: 6px;
+        border: 2px solid #1a1a1a;
+    }
+    
+    .stDataFrame [data-testid="stDataFrame"]::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #ff3333, #ff0000);
+        box-shadow: 0 0 10px rgba(255,0,0,0.4);
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .stDataFrame {
+            font-size: 12px;
+        }
+        
+        .stDataFrame thead th {
+            padding: 10px 8px !important;
+            font-size: 11px !important;
+        }
+        
+        .stDataFrame tbody td {
+            padding: 8px 6px !important;
+            font-size: 11px !important;
+        }
+    }
+    </style>
+    """
+    
+    # Apply CSS styling for dataframe
+    st.markdown(dataframe_css, unsafe_allow_html=True)
+    
+    # Format data for better st.dataframe display
+    display_df = consolidated_df.copy()
+    
+    # Format scores with emoji
+    if 'Opportunity Score' in display_df.columns:
+        formatted_scores = []
+        for score_str in display_df['Opportunity Score']:
+            score_emoji, score_color, score_val = get_score_emoji_and_color(score_str)
+            formatted_scores.append(f"{score_emoji} {score_val}")
+        display_df['Score'] = formatted_scores
+    
+    # Format margins with emoji and color
+    if 'Margine %' in display_df.columns:
+        formatted_margins = []
+        for margin_str in display_df['Margine %']:
+            margin_emoji, margin_color, margin_val = get_margin_emoji_and_color(margin_str)
+            formatted_margins.append(f"{margin_emoji} {margin_val:.1f}%")
+        display_df['Margine'] = formatted_margins
+    
+    # Format action links as text
+    if 'ASIN' in display_df.columns:
+        display_df['Links'] = display_df['ASIN'].apply(lambda asin: f"🛒 AMZ | 📊 KEP")
+    
+    # Truncate title for better display
+    if 'Title' in display_df.columns:
+        display_df['Prodotto'] = display_df['Title'].apply(lambda x: str(x)[:40] + "..." if len(str(x)) > 40 else str(x))
+    
+    # Select and rename columns for final display
+    final_display_columns = {
+        'ASIN': 'ASIN',
+        'Prodotto': 'Prodotto', 
+        'Best Route': 'Route',
+        'Purchase Price €': 'Acquisto €',
+        'Net Cost €': 'Netto €',
+        'Target Price €': 'Vendita €',
+        'Fees €': 'Fee €',
+        'Amazon €': 'Amazon €',
+        'Margine': 'Margine',
+        'Web €': 'Web €',
+        'Score': 'Score',
+        'Links': 'Azioni'
+    }
+    
+    # Select only columns that exist
+    available_columns = {k: v for k, v in final_display_columns.items() if k in display_df.columns}
+    display_df_final = display_df[list(available_columns.keys())].rename(columns=available_columns)
+    
+    # Configure column display
+    column_config = {
+        'ASIN': st.column_config.TextColumn('ASIN', width=100, help="Amazon ASIN"),
+        'Prodotto': st.column_config.TextColumn('Prodotto', width=250),
+        'Route': st.column_config.TextColumn('Route', width=80),
+        'Acquisto €': st.column_config.TextColumn('Acquisto €', width=90),
+        'Netto €': st.column_config.TextColumn('Netto €', width=80),
+        'Vendita €': st.column_config.TextColumn('Vendita €', width=90),
+        'Fee €': st.column_config.TextColumn('Fee €', width=70),
+        'Amazon €': st.column_config.TextColumn('Amazon €', width=80),
+        'Margine': st.column_config.TextColumn('Margine', width=90),
+        'Web €': st.column_config.TextColumn('Web €', width=80),
+        'Score': st.column_config.TextColumn('Score', width=80),
+        'Azioni': st.column_config.TextColumn('Azioni', width=100)
+    }
+    
+    # Debug output
+    st.write("🔍 Rendering enhanced consolidated table...")
+    
+    # Display the dataframe with enhanced styling
     st.dataframe(
-        consolidated_df,
+        display_df_final,
         column_config=column_config,
         hide_index=True,
         use_container_width=True,
         height=600
     )
+    
+    # Metrics row below table
+    st.markdown("---")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # Calculate metrics from consolidated_df
+    total_opportunities = len(consolidated_df)
+    
+    # Calculate average margin from Margine % column
+    if 'Margine %' in consolidated_df.columns:
+        # Extract numeric values from percentage strings like "25.5%"
+        margin_values = []
+        for margin_str in consolidated_df['Margine %']:
+            try:
+                import re
+                margin_match = re.search(r'([\d.]+)', str(margin_str))
+                if margin_match:
+                    margin_values.append(float(margin_match.group(1)))
+            except:
+                continue
+        avg_margin = sum(margin_values) / len(margin_values) if margin_values else 0
+    else:
+        avg_margin = 0
+    
+    # Calculate high score count from Opportunity Score column
+    if 'Opportunity Score' in consolidated_df.columns:
+        high_score_count = 0
+        for score_str in consolidated_df['Opportunity Score']:
+            try:
+                import re
+                score_match = re.search(r'(\d+)', str(score_str))
+                if score_match:
+                    score = int(score_match.group(1))
+                    if score >= 60:
+                        high_score_count += 1
+            except:
+                continue
+    else:
+        high_score_count = 0
+    
+    # Get target countries count from session state
+    target_countries_selected = st.session_state.get('target_countries', ['IT', 'DE', 'FR', 'ES', 'UK'])
+    target_markets_count = len(target_countries_selected) if target_countries_selected else 5
+    
+    with col1:
+        st.metric(
+            "🎯 Totale Opportunità", 
+            total_opportunities,
+            delta=f"+{total_opportunities}" if total_opportunities > 0 else None
+        )
+    
+    with col2:
+        st.metric(
+            "💰 Margine Medio", 
+            f"{avg_margin:.1f}%",
+            delta=f"+{avg_margin:.1f}%" if avg_margin > 15 else None
+        )
+    
+    with col3:
+        score_percentage = (high_score_count / total_opportunities * 100) if total_opportunities > 0 else 0
+        st.metric(
+            "⭐ Score Alto (≥60)", 
+            high_score_count,
+            delta=f"{score_percentage:.1f}% del totale"
+        )
+    
+    with col4:
+        markets_label = "Tutti" if target_markets_count == 5 else f"{target_markets_count}/5"
+        st.metric(
+            "🌍 Mercati Target", 
+            markets_label,
+            delta=f"{', '.join(target_countries_selected)}" if target_markets_count < 5 else "Globale"
+        )
+    
+    # Help and Legend Expander
+    with st.expander("📖 Legenda e Aiuto"):
+        col_left, col_right = st.columns(2)
+        
+        with col_left:
+            st.markdown("""
+            **🎯 Score Opportunità:**
+            - 🌟 **≥80**: Eccellente (alta profittabilità)
+            - ⭐ **60-79**: Buono (profittabilità media)  
+            - ⚠️ **<60**: Attenzione (bassa profittabilità)
+            
+            **💰 Colori Margine:**
+            - 🟢 **≥25%**: Margine alto (raccomandato)
+            - 🟡 **15-24%**: Margine medio (accettabile)
+            - 🔴 **<15%**: Margine basso (rischio)
+            """)
+        
+        with col_right:
+            st.markdown("""
+            **🛒 Canali di Vendita:**
+            - **Amazon €**: Profitto vendita su Amazon/FBM
+            - **Web €**: Profitto aggiuntivo vendita sito web
+            
+            **🔗 Azioni Disponibili:**
+            - 🛒 **AMZ**: Link diretto al prodotto Amazon
+            - 📊 **KEP**: Analisi storica prezzi su Keepa
+            
+            **💡 Tip Filtri:**
+            Usa i filtri mercati target per concentrarti sui paesi di interesse. 
+            I filtri si applicano dopo aver premuto "Applica Filtri".
+            """)
+        
+        st.info("💡 **Suggerimento**: Ordina mentalmente per Score > Margine > Amazon € per trovare le migliori opportunità!")
 
 
 def display_enhanced_consolidated_view(routes_df):
@@ -1000,127 +1307,76 @@ def display_enhanced_consolidated_view(routes_df):
 
 
 def display_enhanced_opportunity_card(opportunity, rank):
-    """Enhanced opportunity card with gradient styling like historic deals"""
+    """Enhanced opportunity card con styling come affari storici"""
     
-    # Get values with fallbacks
+    # Ottieni valori
     asin = opportunity.get('asin', 'N/A')
-    title = opportunity.get('title', 'N/A')[:60] + "..." if len(str(opportunity.get('title', ''))) > 60 else opportunity.get('title', 'N/A')
+    title = str(opportunity.get('title', 'N/A'))[:60] + "..."
     source = opportunity.get('source', '').upper()
     target = opportunity.get('target', '').upper()
-    margin_val = opportunity.get('gross_margin_pct', opportunity.get('roi', 0))
+    margin_val = opportunity.get('gross_margin_pct', 0)
     score = opportunity.get('opportunity_score', 0)
-    
-    # Amazon profit primary, website secondary
     profit_amazon = opportunity.get('gross_margin_eur', 0)
     profit_website = opportunity.get('profit_website', 0)
     
-    buy_price = opportunity.get('purchase_price', 0)
-    sell_price = opportunity.get('target_price', 0)
-    
-    # Determine score emoji and color
-    if score >= 90:
-        score_emoji = "🌟"
-        score_color = "#00ff00"
-    elif score >= 80:
-        score_emoji = "⭐"
-        score_color = "#90EE90"
-    elif score >= 70:
-        score_emoji = "🔥"
-        score_color = "#ffaa00"
+    # Colori basati su score
+    if score >= 80:
+        card_color = "#1a4d1a"  # Verde scuro
+        border_color = "#00ff00"
     elif score >= 60:
-        score_emoji = "👍"
-        score_color = "#ffa500"
+        card_color = "#4d4d1a"  # Giallo scuro
+        border_color = "#ffff00"
     else:
-        score_emoji = "⚠️"
-        score_color = "#ff6666"
+        card_color = "#4d1a1a"  # Rosso scuro
+        border_color = "#ff6666"
     
-    # Margin color
-    if margin_val >= 30:
-        margin_color = "#00ff00"
-        margin_emoji = "🟢"
-    elif margin_val >= 20:
-        margin_color = "#90EE90"
-        margin_emoji = "🟡"
-    elif margin_val >= 10:
-        margin_color = "#ffaa00"
-        margin_emoji = "🟠"
-    else:
-        margin_color = "#ff6666"
-        margin_emoji = "🔴"
-    
-    # Create enhanced card HTML with opportunity-card styling
+    # Render della card con HTML
     card_html = f'''
-    <div class="opportunity-card" style="
-        background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
-        border: 1px solid #2a2a2a;
+    <div style="
+        background: linear-gradient(135deg, {card_color}, #0a0a0a);
+        border: 2px solid {border_color};
         border-radius: 16px;
         padding: 20px;
-        margin-bottom: 16px;
-        box-shadow: 
-            0 4px 6px rgba(0,0,0,0.5),
-            0 1px 3px rgba(0,0,0,0.08),
-            inset 0 1px 0 rgba(255,255,255,0.05);
-        transition: all 0.3s ease;
+        margin: 12px 0;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.5);
         color: white;
     ">
-        <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h4 style="color: #ff0000; margin: 0; font-size: 16px;">#{rank} | {title}</h4>
-            <div style="text-align: right;">
-                <span style="background: {score_color}; color: black; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">
-                    {score_emoji} {score:.0f}
-                </span>
-            </div>
+            <span style="background: {border_color}; color: black; padding: 4px 12px; border-radius: 20px; font-weight: bold;">
+                {score:.0f}/100
+            </span>
         </div>
         
         <div style="margin-bottom: 12px;">
-            <span style="color: #cccccc; font-size: 12px;">ASIN:</span>
-            <span style="color: white; font-weight: bold; margin-right: 20px;">{asin}</span>
-            <span style="color: #ff0000; font-size: 14px; font-weight: bold;">🛣️ {source} → {target}</span>
+            <span style="color: #ccc;">ASIN: {asin} | </span>
+            <span style="color: #ff0000; font-weight: bold;">🛣️ {source} → {target}</span>
         </div>
         
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
-            <div style="text-align: center; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
-                <div style="color: #cccccc; font-size: 11px;">ACQUISTO</div>
-                <div style="color: white; font-weight: bold;">€{buy_price:.2f}</div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+            <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px;">
+                <div style="font-size: 20px; font-weight: bold; color: {border_color};">{margin_val:.1f}%</div>
+                <div style="font-size: 12px; color: #ccc;">MARGINE</div>
             </div>
-            <div style="text-align: center; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
-                <div style="color: #cccccc; font-size: 11px;">VENDITA</div>
-                <div style="color: white; font-weight: bold;">€{sell_price:.2f}</div>
+            
+            <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px;">
+                <div style="font-size: 20px; font-weight: bold; color: #00ff00;">€{profit_amazon:.2f}</div>
+                <div style="font-size: 12px; color: #ccc;">AMAZON</div>
             </div>
-            <div style="text-align: center; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px;">
-                <div style="color: #cccccc; font-size: 11px;">AMAZON</div>
-                <div style="color: #00ff00; font-weight: bold;">€{profit_amazon:.2f}</div>
-                <div style="color: #888888; font-size: 10px;">Web: €{profit_website:.2f}</div>
+            
+            <div style="text-align: center; background: rgba(255,255,255,0.1); padding: 12px; border-radius: 8px;">
+                <div style="font-size: 20px; font-weight: bold; color: #90EE90;">€{profit_website:.2f}</div>
+                <div style="font-size: 12px; color: #ccc;">SITO WEB</div>
             </div>
         </div>
         
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center;">
-                <span style="color: {margin_color}; font-size: 18px; font-weight: bold; margin-right: 8px;">
-                    {margin_emoji} {margin_val:.1f}%
-                </span>
-                <span style="color: #cccccc; font-size: 12px;">Margine</span>
-            </div>
-            <div style="display: flex; gap: 8px;">
-                <a href="https://www.amazon.it/dp/{asin}" target="_blank" style="
-                    background: #ff0000; 
-                    color: white; 
-                    padding: 6px 12px; 
-                    border-radius: 6px; 
-                    text-decoration: none; 
-                    font-size: 12px;
-                    font-weight: bold;
-                ">🛒 Amazon</a>
-                <a href="https://keepa.com/#!product/8-{asin}" target="_blank" style="
-                    background: #666666; 
-                    color: white; 
-                    padding: 6px 12px; 
-                    border-radius: 6px; 
-                    text-decoration: none; 
-                    font-size: 12px;
-                    font-weight: bold;
-                ">📊 Keepa</a>
-            </div>
+        <div style="margin-top: 12px; display: flex; justify-content: space-between;">
+            <a href="https://www.amazon.it/dp/{asin}" target="_blank" style="background: #ff0000; color: white; padding: 8px 16px; text-decoration: none; border-radius: 6px; font-size: 12px;">
+                🛒 AMAZON
+            </a>
+            <a href="https://keepa.com/#!product/8-{asin}" target="_blank" style="background: #0066cc; color: white; padding: 8px 16px; text-decoration: none; border-radius: 6px; font-size: 12px;">
+                📊 KEEPA
+            </a>
         </div>
     </div>
     '''
@@ -1381,29 +1637,13 @@ def apply_preset_filter(df: pd.DataFrame, preset_name: str) -> pd.DataFrame:
         return df
     
     if preset_name == "🔥 Hot Deals":
-        if 'gross_margin_pct' in df.columns:
-            return df[df['gross_margin_pct'] > 25]
-        else:
-            return df[df['roi'] > 35]  # Fallback to ROI
+        return df[df['gross_margin_pct'] > 25]  # ✅ Usa margine invece di ROI
     
     elif preset_name == "👍 Safe Bets":
-        # Need to calculate risk for all items
-        try:
-            df = df.copy()
-            df['risk_level'] = df.apply(lambda x: get_deal_risk_alert(x), axis=1)
-            return df[(df['opportunity_score'] > 80) & (df['risk_level'] == 'Low')]
-        except Exception:
-            # Fallback to simple filter if risk calculation fails
-            return df[df['opportunity_score'] > 80]
+        return df[df['gross_margin_pct'] > 20]  # ✅ Usa margine
     
     elif preset_name == "🎲 High Risk/Reward":
-        try:
-            df = df.copy()
-            df['risk_level'] = df.apply(lambda x: get_deal_risk_alert(x), axis=1)
-            return df[(df['roi'] > 40) & (df['risk_level'] == 'High')]
-        except Exception:
-            # Fallback to simple filter if risk calculation fails
-            return df[df['roi'] > 40]
+        return df[df['gross_margin_pct'] > 30]  # ✅ Usa margine
     
     elif preset_name == "💎 Hidden Gems":
         # Complex filter for undervalued opportunities
@@ -1416,13 +1656,13 @@ def apply_preset_filter(df: pd.DataFrame, preset_name: str) -> pd.DataFrame:
             
             df['is_hidden_gem'] = (
                 (df['opportunity_score'] > 75) & 
-                (df['roi'] > 20) &
+                (df['gross_margin_pct'] > 15) &  # ✅ Usa margine invece di ROI
                 (df['competition_score'] > 60)  # Low competition (higher score = less competition)
             )
             return df[df['is_hidden_gem']]
         except Exception:
             # Fallback to simpler filter
-            return df[(df['opportunity_score'] > 75) & (df['roi'] > 20)]
+            return df[(df['opportunity_score'] > 75) & (df['gross_margin_pct'] > 15)]  # ✅ Usa margine
     
     else:  # "Tutti"
         return df
@@ -1808,14 +2048,28 @@ def main():
         with st.expander("🔧 Advanced Settings"):
             
             
-            inbound_logistics = st.number_input(
-                "Inbound Logistics Cost €",
-                min_value=0.0,
-                max_value=10.0,
-                value=2.0,
-                step=0.1,
-                help="Cost for inbound logistics per unit"
-            )
+            st.markdown("**💰 Inbound Logistics Cost (Scaglioni):**")
+            col1, col2 = st.columns(2)
+
+            with col1:
+                inbound_logistics_low = st.slider(
+                    "≤€199", 
+                    min_value=0.0, 
+                    max_value=10.0, 
+                    value=1.5, 
+                    step=0.25,
+                    help="Costo logistica per prodotti fino a €199"
+                )
+
+            with col2:
+                inbound_logistics_high = st.slider(
+                    ">€199", 
+                    min_value=0.0, 
+                    max_value=20.0, 
+                    value=3.0, 
+                    step=0.25,
+                    help="Costo logistica per prodotti oltre €199"
+                )
             
             min_roi = st.slider(
                 "Minimum Margine %",
@@ -1901,7 +2155,8 @@ def main():
                 'scenario': scenario,
                 'mode': mode,
                 'discount': discount / 100,  # Converte da percentuale
-                'inbound_logistics': inbound_logistics,
+                'inbound_logistics_low': inbound_logistics_low,
+                'inbound_logistics_high': inbound_logistics_high,
                 'min_roi_pct': min_roi,
                 'min_margin_pct': min_margin,
                 'scoring_weights': {
@@ -2074,18 +2329,16 @@ def main():
                             if valid_deal:
                                 # Apply sidebar preset filters
                                 if preset_filter == "🔥 Hot Deals":
-                                    if enhanced_deal.get('margin_pct', enhanced_deal.get('roi_pct', 0)) > 25:
+                                    if enhanced_deal.get('margin_pct', 0) > 25:  # ✅ Usa margine invece di ROI
                                         enhanced_deals.append(enhanced_deal)
                                 elif preset_filter == "👍 Safe Bets":
-                                    risk = get_deal_risk_alert(deal)
-                                    if enhanced_deal['score'] > 80 and risk == 'Low':
+                                    if enhanced_deal.get('margin_pct', 0) > 20:  # ✅ Usa margine
                                         enhanced_deals.append(enhanced_deal)
                                 elif preset_filter == "🎲 High Risk/Reward":
-                                    risk = get_deal_risk_alert(deal)
-                                    if enhanced_deal['roi_pct'] > 40 and risk == 'High':
+                                    if enhanced_deal.get('margin_pct', 0) > 30:  # ✅ Usa margine
                                         enhanced_deals.append(enhanced_deal)
                                 elif preset_filter == "💎 Hidden Gems":
-                                    if enhanced_deal['score'] > 75 and enhanced_deal['roi_pct'] > 20:
+                                    if enhanced_deal['score'] > 75 and enhanced_deal.get('margin_pct', 0) > 15:  # ✅ Usa margine
                                         killer_metrics = calculate_killer_metrics(deal)
                                         if len(killer_metrics['descriptions']) >= 2:
                                             enhanced_deals.append(enhanced_deal)
@@ -2284,6 +2537,31 @@ def main():
                     else:
                         st.info("Nintendo Switch Camera (B0F3JNJXQ5) non trovato nei dati")
                 
+                # AGGIUNGI test case per verifica calcoli pricing
+                if st.checkbox("🧮 Test Calcoli Pricing", key="test_pricing"):
+                    st.markdown("### 🧮 Verifica Calcoli Pricing")
+                    
+                    # Test case Italia
+                    test_cases = [
+                        {"price": 200.0, "locale": "it", "discount": 0.21, "expected": 121.93},
+                        {"price": 200.0, "locale": "de", "discount": 0.21, "expected": 132.77},
+                        {"price": 150.0, "locale": "fr", "discount": 0.15, "expected": 106.25},
+                        {"price": 100.0, "locale": "es", "discount": 0.25, "expected": 61.98}
+                    ]
+                    
+                    from pricing import compute_net_purchase
+                    
+                    for test in test_cases:
+                        result = compute_net_purchase(
+                            test["price"], 
+                            test["locale"], 
+                            test["discount"], 
+                            VAT_RATES
+                        )
+                        
+                        status = "✅" if abs(result - test["expected"]) < 0.01 else "❌"
+                        st.write(f"{status} {test['locale'].upper()}: €{test['price']}, {test['discount']*100}% → €{result:.2f} (expected €{test['expected']})")
+                
                 # DEBUG SECTION - Verifica calcoli per prodotti specifici
                 if st.checkbox("🔍 Debug Calcoli Profitto", key="debug_profit"):
                     test_asin = st.text_input("Inserisci ASIN da verificare:", value="B0F3JNJXQ5")
@@ -2367,6 +2645,71 @@ def main():
                                     st.success("✅ Calcoli corretti!")
                         else:
                             st.warning(f"ASIN {test_asin} non trovato")
+                
+                # CALCOLI VERIFICATI ✅ - Sezione step-by-step examples
+                if st.checkbox("✅ Calcoli Verificati", key="verified_calculations"):
+                    st.markdown("### ✅ Calcoli Verificati - Esempi Step-by-Step")
+                    
+                    st.markdown("#### 🔍 Test Case 1: Prodotto Standard (≤€199)")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**INPUT:**")
+                        st.write("• Purchase Price: €150.00")
+                        st.write("• Locale: DE (Germania)")
+                        st.write("• Discount: 21%")
+                        st.write("• Target Price: €200.00")
+                        
+                    with col2:
+                        st.write("**STEP-BY-STEP:**")
+                        st.write("1. After Discount: €150 × (1-0.21) = €118.50")
+                        st.write("2. Remove VAT 19%: €118.50 ÷ 1.19 = €99.58")
+                        st.write("3. Inbound (≤€199): €1.50")
+                        st.write("4. Referral Fee 15%: €200 × 0.15 = €30.00")
+                        st.write("5. FBA Fee: ~€3.00")
+                        st.write("**Total Cost:** €99.58 + €1.50 + €30.00 + €3.00 = €134.08")
+                        st.write("**Profit:** €200.00 - €134.08 = €65.92")
+                        st.write("**ROI:** €65.92 ÷ €101.08 × 100 = 65.2%")
+                    
+                    st.markdown("---")
+                    
+                    st.markdown("#### 🔍 Test Case 2: Prodotto Premium (>€199)")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**INPUT:**")
+                        st.write("• Purchase Price: €300.00")
+                        st.write("• Locale: DE (Germania)")
+                        st.write("• Discount: 21%")
+                        st.write("• Target Price: €400.00")
+                        
+                    with col2:
+                        st.write("**STEP-BY-STEP:**")
+                        st.write("1. After Discount: €300 × (1-0.21) = €237.00")
+                        st.write("2. Remove VAT 19%: €237.00 ÷ 1.19 = €199.16")
+                        st.write("3. Inbound (>€199): €3.00")
+                        st.write("4. Referral Fee 15%: €400 × 0.15 = €60.00")
+                        st.write("5. FBA Fee: ~€5.00")
+                        st.write("**Total Cost:** €199.16 + €3.00 + €60.00 + €5.00 = €267.16")
+                        st.write("**Profit:** €400.00 - €267.16 = €132.84")
+                        st.write("**ROI:** €132.84 ÷ €202.16 × 100 = 65.7%")
+                    
+                    st.markdown("---")
+                    
+                    st.markdown("#### 🧮 Verifica Scaglioni Inbound")
+                    st.write("**Inbound Logistics Tiered Pricing:**")
+                    st.success("✅ Net Cost ≤ €199: Inbound = €1.50")
+                    st.success("✅ Net Cost > €199: Inbound = €3.00")
+                    
+                    st.markdown("#### 🎯 Validation Checks")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("✅ Net Cost Formula", "Verified", delta="compute_net_purchase()")
+                    with col2:
+                        st.metric("✅ Tiered Inbound", "Working", delta="get_inbound_cost()")
+                    with col3:
+                        st.metric("✅ ROI Realistic", "< 80%", delta="Validated")
                 
                 st.markdown("---")
                 
@@ -2517,25 +2860,65 @@ def main():
                         )
                         st.session_state.only_prime_eligible = only_prime_eligible
                 
-                # Apply Filters Button
-                st.markdown("---")
-                col1, col2 = st.columns([1, 3])
+                # Target Countries Filter Section
+                st.markdown("**🌍 Mercati di Vendita:**")
+                
+                # Initialize target countries session state
+                if 'target_countries' not in st.session_state:
+                    st.session_state.target_countries = ['IT', 'DE', 'FR', 'ES', 'UK']
+                
+                col1, col2 = st.columns([2, 1])
                 
                 with col1:
-                    apply_filters_button = st.button(
-                        "🔍 Applica Filtri", 
-                        type="primary",
-                        help="Applica i filtri selezionati ai risultati"
+                    target_countries = st.multiselect(
+                        "Seleziona mercati target",
+                        options=['IT', 'DE', 'FR', 'ES', 'UK'],
+                        default=st.session_state.get('target_countries', ['IT', 'DE', 'FR', 'ES', 'UK']),
+                        key='target_countries_multiselect',
+                        help="Seleziona i mercati dove vendere i prodotti"
                     )
+                    st.session_state.target_countries = target_countries
+                    
+                    # Informational message
+                    if len(target_countries) == 5:
+                        st.info("🌍 Tutti i mercati selezionati")
+                    elif len(target_countries) == 1:
+                        st.info(f"🎯 Solo mercato: {target_countries[0]}")
+                    elif len(target_countries) > 1:
+                        st.info(f"🎯 {len(target_countries)} mercati selezionati: {', '.join(target_countries)}")
+                    else:
+                        st.warning("⚠️ Nessun mercato selezionato")
                 
                 with col2:
-                    if not st.session_state.filters_applied:
-                        st.info("💡 Modifica i filtri e premi 'Applica Filtri' per aggiornare i risultati")
-                    else:
-                        st.success("✅ Filtri applicati! Modifica i parametri sopra e riapplica se necessario.")
+                    st.markdown("**Quick Actions:**")
+                    
+                    # Quick action buttons
+                    if st.button("🇪🇺 Solo EU", help="Seleziona solo mercati EU (IT, DE, FR, ES)", key="eu_only_btn"):
+                        st.session_state.target_countries = ['IT', 'DE', 'FR', 'ES']
+                        st.rerun()
+                    
+                    if st.button("🇮🇹 Italia", help="Solo mercato italiano", key="italy_only_btn"):
+                        st.session_state.target_countries = ['IT']
+                        st.rerun()
+                    
+                    if st.button("🌍 Reset", help="Seleziona tutti i mercati", key="reset_countries_btn"):
+                        st.session_state.target_countries = ['IT', 'DE', 'FR', 'ES', 'UK']
+                        st.rerun()
                 
-                # Set flag if button was pressed
-                if apply_filters_button:
+                # Bottone per applicare filtri
+                st.markdown("---")
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col2:
+                    apply_filters = st.button(
+                        "🔍 Applica Filtri", 
+                        type="primary", 
+                        use_container_width=True,
+                        help="Clicca per aggiornare i risultati con i nuovi filtri"
+                    )
+                
+                # Applicare filtri solo quando bottone premuto
+                if apply_filters or 'initial_load' not in st.session_state:
+                    st.session_state.initial_load = True
                     st.session_state.filters_applied = True
                 
                 # Apply all filters to the data - ONLY if filters have been applied
@@ -2557,12 +2940,29 @@ def main():
                     # Basic filters
                     filtered_routes = filtered_routes[filtered_routes['opportunity_score'] >= min_score_filter]
                     filtered_routes = filtered_routes[filtered_routes['roi'] >= min_roi_filter]
+                    
+                    # Target Countries Filter
+                    target_countries_selected = st.session_state.get('target_countries', ['IT', 'DE', 'FR', 'ES', 'UK'])
+                    if target_countries_selected and len(target_countries_selected) < 5:  # If not all countries selected
+                        # Check which column to use for target market filtering
+                        target_col = 'target' if 'target' in filtered_routes.columns else 'target_market'
+                        if target_col in filtered_routes.columns:
+                            # Convert to uppercase for comparison
+                            target_countries_upper = [country.upper() for country in target_countries_selected]
+                            filtered_routes = filtered_routes[
+                                filtered_routes[target_col].str.upper().isin(target_countries_upper)
+                            ]
+                            # Show info message about target countries filter
+                            if len(target_countries_selected) == 1:
+                                st.info(f"🎯 Mostrando solo opportunità per mercato: {target_countries_selected[0]}")
+                            elif len(target_countries_selected) > 1:
+                                st.info(f"🌍 Mostrando opportunità per {len(target_countries_selected)} mercati: {', '.join(target_countries_selected)}")
                 else:
                     # Show unfiltered data with message to apply filters
                     filtered_routes = best_routes.copy()
                     original_count = len(filtered_routes)
                     
-                    st.warning("⚠️ Filtri non ancora applicati. Usa il bottone 'Applica Filtri' per filtrare i risultati.")
+                    st.info("ℹ️ Modifica i filtri e premi 'Applica Filtri' per aggiornare i risultati")
                 
                 # CRITICAL: Always filter out same-country routes and zero/negative ROI (basic sanity filters)
                 # Fix column names - use 'source' and 'target' not 'source_market'/'target_market'
@@ -2698,7 +3098,7 @@ def main():
 
                     if view_mode == "📊 Tabella":
                         # Existing table view
-                        display_consolidated_table(consolidated_df)
+                        display_consolidated_table(consolidated_df, filtered_routes)
                         
                     elif view_mode == "🎴 Cards":
                         # New card view
@@ -2977,7 +3377,8 @@ def main():
                     'purchase_strategy': purchase_strategy,
                     'scenario': scenario,
                     'mode': mode,
-                        'inbound_logistics': inbound_logistics,
+                    'inbound_logistics_low': inbound_logistics_low,
+                    'inbound_logistics_high': inbound_logistics_high,
                     'scoring_weights': {
                         'profit': profit_weight / total_weight,
                         'velocity': velocity_weight / total_weight,

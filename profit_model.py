@@ -8,12 +8,20 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 from typing import Dict, Any, List, Tuple
-from config import SCORING_WEIGHTS, VAT_RATES, DEFAULT_DISCOUNT, HIDDEN_COSTS
+from config import SCORING_WEIGHTS, VAT_RATES, DEFAULT_DISCOUNT, HIDDEN_COSTS, DEBUG_MODE
 from pricing import select_purchase_price, select_target_price, compute_net_purchase
 from scoring import profit_score, velocity_index, competition_index, opportunity_score
 
+
+def get_inbound_cost(net_cost: float, params: Dict[str, Any]) -> float:
+    """Seleziona costo inbound basato sullo scaglione"""
+    if net_cost <= 199:
+        return params.get('inbound_logistics_low', 1.5)
+    else:
+        return params.get('inbound_logistics_high', 3.0)
+
 @st.cache_data(ttl=1800)  # Cache for 30 min
-def calculate_all_routes_cached(df_csv: str, discount: float, strategy: str, scenario: str, mode: str, min_roi: float, min_margin: float) -> pd.DataFrame:
+def calculate_all_routes_cached(df_csv: str, discount: float, strategy: str, scenario: str, mode: str, min_roi: float, min_margin: float, inbound_low: float = 1.5, inbound_high: float = 3.0) -> pd.DataFrame:
     """
     Cached calculation of all cross-market routes
     
@@ -25,6 +33,8 @@ def calculate_all_routes_cached(df_csv: str, discount: float, strategy: str, sce
         mode: FBA/FBM mode
         min_roi: Minimum ROI threshold
         min_margin: Minimum margin threshold
+        inbound_low: Inbound logistics cost for products ≤€199
+        inbound_high: Inbound logistics cost for products >€199
         
     Returns:
         pd.DataFrame: Best routes results
@@ -41,7 +51,8 @@ def calculate_all_routes_cached(df_csv: str, discount: float, strategy: str, sce
         'discount': discount,
         'min_roi_pct': min_roi,
         'min_margin_pct': min_margin,
-        'inbound_logistics': 2.0,
+        'inbound_logistics_low': inbound_low,
+        'inbound_logistics_high': inbound_high,
         'scoring_weights': SCORING_WEIGHTS
     }
     
@@ -123,8 +134,25 @@ def compute_route_metrics(
     Calcola metriche complete per rotta Source→Target
     CON CALCOLI REALI COME AMAZON REVENUE CALCULATOR
     """
+    # Verifica e correggi source_locale
+    detected_locale = row.get('detected_locale', None)
+    source_market = row.get('source_market', None)
+    
+    # Logic di fallback per source_locale
+    if not source_locale or source_locale.strip() == '':
+        if detected_locale:
+            source_locale = str(detected_locale).lower()
+        elif source_market:
+            source_locale = str(source_market).lower()
+        else:
+            source_locale = 'it'  # Fallback finale
+    
     # Usa pricing.py per calcolare costi di acquisto
     purchase_price = select_purchase_price(row, params['purchase_strategy'])
+    
+    # DEBUG: Verifica source_locale
+    if DEBUG_MODE:
+        st.write(f"compute_route_metrics DEBUG: source_locale='{source_locale}', purchase_price={purchase_price}, discount={params.get('discount', 0.21)}")
     
     if purchase_price <= 0:
         return {
@@ -146,10 +174,12 @@ def compute_route_metrics(
     
     # CALCOLO COSTO NETTO CORRETTO
     discount = params.get('discount', 0.21)  # 21% sconto
-    source_vat = VAT_RATES.get(source_locale, 0.19)  # IVA source (DE=19%)
-    
-    # Formula corretta: (prezzo * (1-sconto)) / (1+IVA)
-    net_cost = (purchase_price * (1 - discount)) / (1 + source_vat)
+    net_cost = compute_net_purchase(
+        price_gross=purchase_price,
+        source_locale=source_locale, 
+        discount_pct=discount,
+        vat_rates=VAT_RATES
+    )
     
     # Target price
     if custom_target_price is not None:
@@ -182,9 +212,10 @@ def compute_route_metrics(
     
     # CALCOLO PROFITTO AMAZON/FBM - ALLINEATO AL REVENUE CALCULATOR UFFICIALE
     # Solo costi base: prodotto + spedizione + fees ufficiali Amazon
+    inbound_cost = get_inbound_cost(net_cost, params)
     total_costs_marketplace = (
         net_cost +                      # Costo prodotto netto
-        params.get('inbound_logistics', 2.0) +  # Inbound verso magazzino
+        inbound_cost +                  # Inbound verso magazzino (Scaglioni)
         fees['referral'] +              # Referral fee
         fees['fulfillment']             # Fulfillment fee
     )
@@ -197,7 +228,7 @@ def compute_route_metrics(
     
     total_costs_website = (
         net_cost +                      # Costo prodotto netto
-        params.get('inbound_logistics', 2.0) +  # Inbound verso magazzino
+        inbound_cost +                  # Inbound verso magazzino (Scaglioni)
         website_fee +                   # 5% piattaforma
         website_shipping                # Spedizione GLS
     )
@@ -205,9 +236,16 @@ def compute_route_metrics(
     profit_website = target_price - total_costs_website
     
     # ROI per entrambi i canali
-    investment = net_cost + params.get('inbound_logistics', 2.0)
+    investment = net_cost + inbound_cost
     roi_marketplace = (profit_marketplace / investment * 100) if investment > 0 else 0
     roi_website = (profit_website / investment * 100) if investment > 0 else 0
+    
+    # DEBUG: Log suspicious calculations
+    if DEBUG_MODE:
+        st.write(f"PRICING DEBUG - Purchase: €{purchase_price}, Net: €{net_cost}, Target: €{target_price}")
+        st.write(f"Profit Amazon: €{profit_marketplace}, ROI: {roi_marketplace:.1f}%")
+        if roi_marketplace > 50:
+            st.warning("⚠️ ROI suspiciously high - check calculations")
     
     # Usa il profitto migliore per il calcolo scores
     real_profit = max(profit_marketplace, profit_website)
@@ -251,7 +289,7 @@ def compute_route_metrics(
         # Breakdown dettagliato
         'cost_breakdown': {
             'product_net_cost': net_cost,
-            'inbound_shipping': params.get('inbound_logistics', 2.0),
+            'inbound_shipping': inbound_cost,
             'referral_fee': fees['referral'],
             'fulfillment_fee': fees['fulfillment'],
             'website_fee_5pct': website_fee,
@@ -277,7 +315,7 @@ def find_best_routes_internal(df: pd.DataFrame, params: Dict[str, Any]) -> pd.Da
     Returns:
         DataFrame con migliori opportunità di arbitraggio per ASIN
     """
-    from config import CROSS_MARKET_MARKUP, DEBUG_MODE
+    from config import CROSS_MARKET_MARKUP
     import streamlit as st
     
     if DEBUG_MODE:
@@ -445,9 +483,11 @@ def find_best_routes(df: pd.DataFrame, params: Dict[str, Any]) -> pd.DataFrame:
     mode = params.get('mode', 'FBA')
     min_roi = params.get('min_roi_pct', 0)
     min_margin = params.get('min_margin_pct', 0)
+    inbound_low = params.get('inbound_logistics_low', 1.5)
+    inbound_high = params.get('inbound_logistics_high', 3.0)
     
     # Use cached calculation
-    return calculate_all_routes_cached(df_csv, discount, strategy, scenario, mode, min_roi, min_margin)
+    return calculate_all_routes_cached(df_csv, discount, strategy, scenario, mode, min_roi, min_margin, inbound_low, inbound_high)
 
 
 def analyze_route_profitability(df: pd.DataFrame, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -525,7 +565,8 @@ def create_default_params() -> Dict[str, Any]:
         'scenario': 'current',
         'mode': 'FBA',
         'discount': DEFAULT_DISCOUNT,
-        'inbound_logistics': 2.0,
+        'inbound_logistics_low': 1.5,
+        'inbound_logistics_high': 3.0,
         'vat_rates': VAT_RATES,
         'scoring_weights': SCORING_WEIGHTS,
         'skip_same_locale': True,  # Skip same source-target routes
